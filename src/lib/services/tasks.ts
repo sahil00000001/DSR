@@ -198,7 +198,7 @@ function toDto(row: RawTask, doneCount = 0): TaskDto {
  * their reporting line, for context. Everyone else sees only tasks they are on or
  * created — which, for an employee, is the tasks assigned to them.
  */
-function scopeFor(actor: Actor): Prisma.TaskWhereInput {
+export function taskVisibilityFor(actor: Actor): Prisma.TaskWhereInput {
   if (actor.role === "ADMIN") return {};
 
   const mine: Prisma.TaskWhereInput[] = [
@@ -526,7 +526,7 @@ function buildWhere(filters: TaskFilters, actor: Actor): Prisma.TaskWhereInput {
 
   return {
     AND: [
-      scopeFor(actor),
+      taskVisibilityFor(actor),
       scopeClause(filters.scope, actor),
       ...(filters.status?.length ? [{ status: { in: filters.status } }] : []),
       ...(filters.priority?.length ? [{ priority: { in: filters.priority } }] : []),
@@ -618,7 +618,7 @@ export async function listTasks(
   const now = today();
   // Summary tiles describe the actor's whole visible set, not the filtered slice —
   // "3 overdue" has to mean the same thing whichever filter is active.
-  const visible = scopeFor(actor);
+  const visible = taskVisibilityFor(actor);
 
   const [rows, total, grouped, overdue, dueToday, dueThisWeek, unassigned, openProgress] =
     await Promise.all([
@@ -825,7 +825,7 @@ export interface AdminTaskSnapshot {
 export async function getAdminTaskSnapshot(actor: Actor): Promise<AdminTaskSnapshot> {
   const now = today();
   const soon = addDays(now, 3);
-  const visible = scopeFor(actor);
+  const visible = taskVisibilityFor(actor);
   const open = { status: { in: [...TASK_OPEN_STATUSES] } };
 
   const [total, byStatusRaw, byPriorityRaw, overdue, dueSoon, unassigned, assigneeRows] =
@@ -924,7 +924,7 @@ export async function getAdminTaskSnapshot(actor: Actor): Promise<AdminTaskSnaps
 /** Recent activity across every visible task, for the admin dashboard rail. */
 export async function getRecentTaskActivity(actor: Actor, limit = 12) {
   const rows = await prisma.taskActivity.findMany({
-    where: { task: scopeFor(actor) },
+    where: { task: taskVisibilityFor(actor) },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: {
@@ -973,7 +973,7 @@ export async function countOpenTasksFor(userId: string): Promise<number> {
 /** Count for the admin nav badge: tasks sitting in review. */
 export async function countTasksAwaitingReview(actor: Actor): Promise<number> {
   if (!isManagerOrAdmin(actor)) return 0;
-  return prisma.task.count({ where: { AND: [scopeFor(actor), { status: "REVIEW" }] } });
+  return prisma.task.count({ where: { AND: [taskVisibilityFor(actor), { status: "REVIEW" }] } });
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,7 +1017,7 @@ export async function getDependencyCandidates(taskId: string | null, actor: Acto
   return prisma.task.findMany({
     where: {
       AND: [
-        scopeFor(actor),
+        taskVisibilityFor(actor),
         { status: { not: "COMPLETED" } },
         ...(taskId
           ? [{ id: { notIn: [taskId, ...blockedBy.map((row) => row.dependentId)] } }]

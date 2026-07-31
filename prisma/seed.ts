@@ -25,6 +25,7 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { DEFAULT_TASK_TAGS } from "../src/lib/constants/enums";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { randomBytes, scryptSync } from "node:crypto";
 import {
@@ -39,6 +40,8 @@ import {
   NEXT_STEPS_BY_DEPARTMENT,
   NOTES,
   PEOPLE,
+  TASK_CATEGORIES,
+  TASKS,
   TASKS_BY_DEPARTMENT,
 } from "./seed-data";
 
@@ -163,6 +166,17 @@ async function reset() {
   await prisma.attachment.deleteMany();
   await prisma.expenseComment.deleteMany();
   await prisma.expenseClaim.deleteMany();
+  // Task graph, children first — several FKs are SetNull rather than cascade.
+  await prisma.taskDependency.deleteMany();
+  await prisma.taskChecklistItem.deleteMany();
+  await prisma.taskMention.deleteMany();
+  await prisma.taskTagLink.deleteMany();
+  await prisma.taskActivity.deleteMany();
+  await prisma.taskUpdate.deleteMany();
+  await prisma.taskAssignee.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.taskTag.deleteMany();
+  await prisma.taskCategory.deleteMany();
   await prisma.dailyStatusReport.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.leaveRequest.deleteMany();
@@ -770,9 +784,319 @@ async function main() {
     }
   }
 
+  // --- Tasks ---------------------------------------------------------------
+  console.log("→ Tasks…");
+
+  const slugOf = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+
+  const categoryByName = new Map<string, string>();
+  for (const category of TASK_CATEGORIES) {
+    const created = await prisma.taskCategory.create({
+      data: {
+        name: category.name,
+        slug: slugOf(category.name),
+        description: category.description,
+        color: category.color,
+      },
+    });
+    categoryByName.set(category.name, created.id);
+  }
+
+  const tagByName = new Map<string, string>();
+  for (const tag of DEFAULT_TASK_TAGS) {
+    const created = await prisma.taskTag.create({
+      data: { name: tag.name, slug: slugOf(tag.name), color: tag.color },
+    });
+    tagByName.set(tag.name, created.id);
+  }
+
+  /**
+   * Oldest due-date first, so the TSK-nnnn sequence grows the way a real ledger
+   * would. `nextTaskNumber()` reads the newest row, so inserting out of order
+   * would produce numbers that do not match the dates.
+   */
+  const taskOrder = [...TASKS].sort(
+    (a, b) => (a.dueInDays ?? 9999) - (b.dueInDays ?? 9999),
+  );
+
+  const taskIdByTitle = new Map<string, string>();
+  let taskSequence = 0;
+
+  for (const task of taskOrder) {
+    const assignees = task.assigneeEmails
+      .map((email) => userByEmail.get(email))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    if (assignees.length === 0) continue;
+
+    taskSequence += 1;
+    const dueOn = task.dueInDays === null ? null : addDays(TODAY, task.dueInDays);
+    const createdAt = addDays(TODAY, Math.min(-2, (task.dueInDays ?? 0) - 6));
+
+    // Progress follows the checklist where there is one, exactly as the app does.
+    const checklist = task.checklist ?? [];
+    const derived =
+      checklist.length > 0
+        ? Math.round((checklist.filter((item) => item.done).length / checklist.length) * 100)
+        : (task.progressPercent ?? (task.status === "COMPLETED" ? 100 : 0));
+
+    const created = await prisma.task.create({
+      data: {
+        taskNumber: `TSK-${String(taskSequence).padStart(4, "0")}`,
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        status: task.status,
+        categoryId: categoryByName.get(task.category) ?? null,
+        dueOn,
+        deadlineAt:
+          dueOn && task.deadlineHour !== undefined
+            ? atHour(dueOn, task.deadlineHour - 5, 30)
+            : null,
+        estimateMinutes: task.estimateHours ? Math.round(task.estimateHours * 60) : null,
+        progressPercent: task.status === "COMPLETED" ? 100 : derived,
+        blockedReason: task.blockedReason ?? null,
+        startedAt:
+          task.status === "TODO" ? null : atHour(addDays(createdAt, 1), 9, 30),
+        completedAt:
+          task.status === "COMPLETED" ? atHour(addDays(dueOn ?? TODAY, -1), 16) : null,
+        recurrence: task.recurrence ?? "NONE",
+        recurrenceEvery: task.recurrenceEvery ?? 1,
+        lastSpawnedFor: task.recurrence && task.recurrence !== "NONE" ? dueOn : null,
+        createdById: admin.id,
+        createdAt,
+        assignees: {
+          create: assignees.map((person, index) => ({
+            userId: person.id,
+            assignedById: admin.id,
+            assignedAt: createdAt,
+            // Most people have opened their work; one or two have not, so the
+            // "unseen" indicator has something to show.
+            seenAt: index === 0 && chance(0.8) ? addDays(createdAt, 1) : null,
+          })),
+        },
+        tagLinks: task.tags?.length
+          ? {
+              create: task.tags
+                .map((name) => tagByName.get(name))
+                .filter((id): id is string => Boolean(id))
+                .map((tagId) => ({ tagId })),
+            }
+          : undefined,
+      },
+      select: { id: true, taskNumber: true },
+    });
+
+    taskIdByTitle.set(task.title, created.id);
+
+    // Timeline: created, then assigned, matching what the actions record.
+    await prisma.taskActivity.createMany({
+      data: [
+        {
+          taskId: created.id,
+          actorId: admin.id,
+          kind: "created",
+          meta: JSON.stringify({
+            priority: task.priority,
+            status: "TODO",
+            assignees: assignees.map((person) => person.name),
+            dueOn: dueOn ? dayKey(dueOn) : null,
+          }),
+          createdAt,
+        },
+        {
+          taskId: created.id,
+          actorId: admin.id,
+          kind: "assigned",
+          meta: JSON.stringify({ to: assignees.map((person) => person.name) }),
+          createdAt: addDays(createdAt, 0),
+        },
+      ],
+    });
+
+    if (checklist.length > 0) {
+      for (const [index, item] of checklist.entries()) {
+        await prisma.taskChecklistItem.create({
+          data: {
+            taskId: created.id,
+            label: item.label,
+            done: item.done,
+            position: index,
+            doneAt: item.done ? addDays(createdAt, 2) : null,
+            doneById: item.done ? assignees[0]!.id : null,
+            createdAt,
+          },
+        });
+      }
+      await prisma.taskActivity.create({
+        data: {
+          taskId: created.id,
+          actorId: admin.id,
+          kind: "checklist_added",
+          meta: JSON.stringify({ count: checklist.length }),
+          createdAt: addDays(createdAt, 0),
+        },
+      });
+    }
+
+    for (const update of task.updates ?? []) {
+      const author = userByEmail.get(update.authorEmail);
+      if (!author) continue;
+
+      const postedAt = atHour(addDays(TODAY, -update.daysAgo), 15, 20);
+      const mentionIds = (update.mentionEmails ?? [])
+        .map((email) => userByEmail.get(email)?.id)
+        .filter((id): id is string => Boolean(id));
+
+      const posted = await prisma.taskUpdate.create({
+        data: {
+          taskId: created.id,
+          authorId: author.id,
+          body: update.body,
+          progressPercent: update.progressPercent ?? null,
+          createdAt: postedAt,
+          mentions: mentionIds.length
+            ? { create: mentionIds.map((userId) => ({ userId, createdAt: postedAt })) }
+            : undefined,
+        },
+        select: { id: true },
+      });
+
+      await prisma.taskActivity.create({
+        data: {
+          taskId: created.id,
+          actorId: author.id,
+          kind: "commented",
+          meta: JSON.stringify({ updateId: posted.id, mentions: mentionIds.length }),
+          comment: update.body.slice(0, 280),
+          createdAt: postedAt,
+        },
+      });
+
+      if (update.progressPercent !== undefined) {
+        await prisma.taskActivity.create({
+          data: {
+            taskId: created.id,
+            actorId: author.id,
+            kind: "progress_changed",
+            meta: JSON.stringify({ to: update.progressPercent }),
+            createdAt: postedAt,
+          },
+        });
+      }
+
+      for (const reply of update.replies ?? []) {
+        const replyAuthor = userByEmail.get(reply.authorEmail);
+        if (!replyAuthor) continue;
+        await prisma.taskUpdate.create({
+          data: {
+            taskId: created.id,
+            authorId: replyAuthor.id,
+            body: reply.body,
+            parentId: posted.id,
+            createdAt: atHour(addDays(TODAY, -reply.daysAgo), 16, 40),
+          },
+        });
+      }
+
+      // Recent mentions land in the tray, so notifications have real content.
+      if (update.daysAgo <= 7) {
+        for (const userId of mentionIds) {
+          await prisma.notification.create({
+            data: {
+              userId,
+              actorId: author.id,
+              type: "TASK_MENTION",
+              title: `${author.name} mentioned you on ${created.taskNumber}`,
+              body: update.body.slice(0, 200),
+              href: `/tasks/${created.id}`,
+              readAt: chance(0.4) ? addDays(TODAY, -1) : null,
+              createdAt: postedAt,
+            },
+          });
+        }
+      }
+    }
+
+    // Closing entries for finished work.
+    if (task.status === "COMPLETED") {
+      await prisma.taskActivity.create({
+        data: {
+          taskId: created.id,
+          actorId: assignees[0]!.id,
+          kind: "completed",
+          meta: JSON.stringify({ from: "IN_PROGRESS", to: "COMPLETED" }),
+          createdAt: atHour(addDays(dueOn ?? TODAY, -1), 16),
+        },
+      });
+    }
+    if (task.status === "BLOCKED") {
+      await prisma.taskActivity.create({
+        data: {
+          taskId: created.id,
+          actorId: assignees[0]!.id,
+          kind: "blocked",
+          meta: JSON.stringify({ from: "IN_PROGRESS", to: "BLOCKED" }),
+          comment: task.blockedReason ?? null,
+          createdAt: addDays(TODAY, -2),
+        },
+      });
+    }
+
+    // Assignment notifications for anything recent enough to still be in the tray.
+    if ((task.dueInDays ?? 0) >= -7) {
+      for (const person of assignees) {
+        await prisma.notification.create({
+          data: {
+            userId: person.id,
+            actorId: admin.id,
+            type: "TASK_ASSIGNED",
+            title: `${admin.name} assigned you ${created.taskNumber}`,
+            body: task.title,
+            href: `/tasks/${created.id}`,
+            readAt: chance(0.6) ? addDays(TODAY, -1) : null,
+            createdAt,
+          },
+        });
+      }
+    }
+  }
+
+  // Dependencies, once every task has an id.
+  for (const task of TASKS) {
+    if (!task.waitsOn) continue;
+    const dependentId = taskIdByTitle.get(task.title);
+    const blockerId = taskIdByTitle.get(task.waitsOn);
+    if (!dependentId || !blockerId) continue;
+
+    await prisma.taskDependency.create({ data: { dependentId, blockerId } });
+    await prisma.taskActivity.create({
+      data: {
+        taskId: dependentId,
+        actorId: admin.id,
+        kind: "dependency_added",
+        meta: JSON.stringify({ blocker: task.waitsOn }),
+        createdAt: addDays(TODAY, -3),
+      },
+    });
+  }
+
   // --- Summary ------------------------------------------------------------
-  const [users, reports, attendance, leave, notifications, claims, claimTotal] =
-    await Promise.all([
+  const [
+    users,
+    reports,
+    attendance,
+    leave,
+    notifications,
+    claims,
+    claimTotal,
+    taskCount,
+    taskUpdateCount,
+  ] = await Promise.all([
       prisma.user.count(),
       prisma.dailyStatusReport.count(),
       prisma.attendance.count(),
@@ -780,6 +1104,8 @@ async function main() {
       prisma.notification.count(),
       prisma.expenseClaim.count(),
       prisma.expenseClaim.aggregate({ _sum: { amountMinor: true } }),
+      prisma.task.count(),
+      prisma.taskUpdate.count(),
     ]);
 
   console.log(`
@@ -790,6 +1116,7 @@ async function main() {
   Status reports      ${reports}
   Attendance records  ${attendance}
   Leave requests      ${leave}
+  Tasks               ${taskCount}   updates ${taskUpdateCount}
   Expense claims      ${claims}   worth ₹${((claimTotal._sum.amountMinor ?? 0) / 100).toLocaleString("en-IN")}
   Notifications       ${notifications}
   History             ${HISTORY_DAYS} days ending ${dayKey(TODAY)}

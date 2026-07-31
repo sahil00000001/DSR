@@ -4,6 +4,7 @@ import { isManagerOrAdmin } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
 import type { NavCounts } from "@/components/layout/sidebar";
 import { lastNDays, subDays, today, toDayKey, workingDaysIn } from "@/lib/utils/date";
+import { TASK_OPEN_STATUSES } from "@/lib/constants/enums";
 
 /**
  * Counts for the navigation badges.
@@ -17,8 +18,15 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
   const scopeToReports = user.role === "MANAGER";
   const canReview = isManagerOrAdmin(user);
 
-  const [unreadNotifications, dsrToReview, pendingLeave, openDsr, expensesToDecide] =
-    await Promise.all([
+  const [
+    unreadNotifications,
+    dsrToReview,
+    pendingLeave,
+    openDsr,
+    expensesToDecide,
+    myOpenTasks,
+    tasksInReview,
+  ] = await Promise.all([
       prisma.notification.count({ where: { userId: user.id, readAt: null } }),
 
       canReview
@@ -50,9 +58,35 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
             where: { status: "SUBMITTED", userId: { not: user.id } },
           })
         : Promise.resolve(0),
+
+      // Tasks assigned to this person and still open — the badge everyone sees.
+      prisma.task.count({
+        where: {
+          assignees: { some: { userId: user.id } },
+          status: { in: [...TASK_OPEN_STATUSES] },
+        },
+      }),
+
+      // Tasks sitting in review, for whoever signs them off.
+      canReview
+        ? prisma.task.count({
+            where: {
+              status: "REVIEW",
+              ...(scopeToReports ? { assignees: { some: { user: { managerId: user.id } } } } : {}),
+            },
+          })
+        : Promise.resolve(0),
     ]);
 
-  return { unreadNotifications, dsrToReview, pendingLeave, openDsr, expensesToDecide };
+  return {
+    unreadNotifications,
+    dsrToReview,
+    pendingLeave,
+    openDsr,
+    expensesToDecide,
+    myOpenTasks,
+    tasksInReview,
+  };
 }
 
 /**
