@@ -11,6 +11,9 @@ import {
   ChartsSection,
   ExpenseSection,
   LeaveSection,
+  MyTasksSection,
+  TaskActivitySection,
+  TeamWorkloadSection,
   PanelFallback,
   RailSection,
   RollCallSection,
@@ -94,6 +97,16 @@ export default async function DashboardPage() {
             <TodaySection />
           </Suspense>
 
+          {/* No fallback: both hide themselves when there is nothing to report, and
+              a skeleton for a panel that may not appear is worse than nothing. */}
+          <Suspense fallback={null}>
+            <MyTasksSection />
+          </Suspense>
+
+          <Suspense fallback={null}>
+            <TeamWorkloadSection />
+          </Suspense>
+
           {canSeeTeam ? (
             <Suspense fallback={<PanelFallback rows={2} />}>
               <RollCallSection />
@@ -112,6 +125,10 @@ export default async function DashboardPage() {
 
           {/* No fallback: the card hides itself when there is nothing to report,
               and a skeleton for a panel that may not appear is worse than nothing. */}
+          <Suspense fallback={null}>
+            <TaskActivitySection />
+          </Suspense>
+
           <Suspense fallback={null}>
             <ExpenseSection />
           </Suspense>

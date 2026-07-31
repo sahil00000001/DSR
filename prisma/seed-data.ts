@@ -971,3 +971,476 @@ export const EXPENSES: SeedExpense[] = [
     vendor: "HP Petrol Pump",
   },
 ];
+
+// ---------------------------------------------------------------------------
+//  Tasks
+// ---------------------------------------------------------------------------
+
+export const TASK_CATEGORIES = [
+  {
+    name: "JK-2 Changeover",
+    color: "indigo",
+    description: "Retooling the sewing machine line for the revised JK-2 bed casting.",
+  },
+  {
+    name: "Fan Line Capacity",
+    color: "emerald",
+    description: "Second-shift trial and throughput work on the Noida fan line.",
+  },
+  {
+    name: "Quality & Compliance",
+    color: "violet",
+    description: "ISO documentation, calibration and the audit trail behind it.",
+  },
+  {
+    name: "Plant Maintenance",
+    color: "amber",
+    description: "Preventive schedules, breakdowns and the tool room.",
+  },
+  {
+    name: "Dealer Network",
+    color: "teal",
+    description: "Dealer visits, warranty calls and after-sales training.",
+  },
+  {
+    name: "Admin & Statutory",
+    color: "orange",
+    description: "Filings, licences, payroll inputs and office running.",
+  },
+] as const;
+
+export interface SeedTask {
+  title: string;
+  description: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  status: "TODO" | "IN_PROGRESS" | "REVIEW" | "COMPLETED" | "BLOCKED";
+  category: string;
+  /** Emails of the people it is assigned to. */
+  assigneeEmails: string[];
+  /** Days from today. Negative is in the past. */
+  dueInDays: number | null;
+  deadlineHour?: number;
+  estimateHours?: number;
+  progressPercent?: number;
+  blockedReason?: string;
+  tags?: string[];
+  recurrence?: "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";
+  recurrenceEvery?: number;
+  /** Checklist items; `done` drives the derived progress. */
+  checklist?: Array<{ label: string; done: boolean }>;
+  /** Threaded updates. `fromAdmin` posts as the works manager. */
+  updates?: Array<{
+    authorEmail: string;
+    body: string;
+    daysAgo: number;
+    progressPercent?: number;
+    mentionEmails?: string[];
+    replies?: Array<{ authorEmail: string; body: string; daysAgo: number }>;
+  }>;
+  /** Title of a task this one waits on. Resolved after all tasks exist. */
+  waitsOn?: string;
+}
+
+/**
+ * Tasks across every status, priority and view.
+ *
+ * Written so each screen has something real to show: overdue work for the red counts,
+ * a blocked task with a reason worth reading, a dependency pair that proves the
+ * completion guard, a recurring template, and threads that read like a shop floor
+ * rather than lorem ipsum.
+ */
+export const TASKS: SeedTask[] = [
+  // --- Overdue ------------------------------------------------------------
+  {
+    title: "Re-cut the feed-dog cam for the JK-2 batch",
+    description:
+      "The revised bed casting moves the feed-dog centre by 0.4 mm, so the existing cam sits proud and the stitch length drifts long at speed.\n\n**What is needed**\n\n- Re-cut to the revised drawing (Rev C, in the tool room folder)\n- Hold 0.02 mm on the lift profile\n- First-off approval from QA before the batch runs\n\nThe old cam is tagged and in the crib — do not scrap it until the new one is signed off.",
+    priority: "CRITICAL",
+    status: "IN_PROGRESS",
+    category: "JK-2 Changeover",
+    assigneeEmails: ["rajendra.tiwari@poojamachines.co.in"],
+    dueInDays: -3,
+    estimateHours: 6,
+    tags: ["Production", "Quality", "Urgent"],
+    checklist: [
+      { label: "Pull Rev C drawing and confirm the datum", done: true },
+      { label: "Rough-cut on the tool-room lathe", done: true },
+      { label: "Grind the lift profile to 0.02 mm", done: false },
+      { label: "First-off approval from QA", done: false },
+    ],
+    updates: [
+      {
+        authorEmail: "rajendra.tiwari@poojamachines.co.in",
+        body: "Rough-cut is done. The surface grinder is still waiting on its spindle bearing, so I am finishing the lift profile on the cylindrical grinder instead — slower, but it will hold the tolerance.",
+        daysAgo: 4,
+        progressPercent: 40,
+      },
+      {
+        authorEmail: "anil.gupta@poojamachines.co.in",
+        body: "Understood. How long does the cylindrical route add? The line is waiting on this.",
+        daysAgo: 3,
+        mentionEmails: ["rajendra.tiwari@poojamachines.co.in"],
+        replies: [
+          {
+            authorEmail: "rajendra.tiwari@poojamachines.co.in",
+            body: "About a day and a half. I should have it with QA by Thursday morning.",
+            daysAgo: 3,
+          },
+        ],
+      },
+      {
+        authorEmail: "rajendra.tiwari@poojamachines.co.in",
+        body: "Half the profile is ground. Holding 0.015 mm on the first side, which is inside tolerance.",
+        daysAgo: 1,
+        progressPercent: 55,
+      },
+    ],
+  },
+  {
+    title: "Clear the 22 paint reworks from last week",
+    description:
+      "Twenty-two table-fan bodies were held for paint touch-up after the orange-peel finish on the second batch. Six were scrapped; the rest are salvageable.\n\nStrip, re-prime and re-coat. Check the gun pressure before starting — the last batch suggests it drifted.",
+    priority: "MEDIUM",
+    status: "IN_PROGRESS",
+    category: "Fan Line Capacity",
+    assigneeEmails: ["manoj.patel@poojamachines.co.in"],
+    dueInDays: -1,
+    estimateHours: 8,
+    progressPercent: 70,
+    tags: ["Production"],
+    updates: [
+      {
+        authorEmail: "manoj.patel@poojamachines.co.in",
+        body: "16 of 22 done. Gun pressure was low at 2.8 bar — reset to 3.5 and the finish is clean now. The remaining six are drying overnight.",
+        daysAgo: 1,
+        progressPercent: 70,
+      },
+    ],
+  },
+
+  // --- Blocked ------------------------------------------------------------
+  {
+    title: "Fit the replacement bearings on the fan motor batch",
+    description:
+      "140 motor housings are assembled and waiting on bearings. The consignment from the usual supplier was rejected by QA — 11 of 40 sampled were outside tolerance on the bore.\n\nOnce replacement stock lands, fit and run the 30-minute noise check on a 10% sample.",
+    priority: "HIGH",
+    status: "BLOCKED",
+    category: "Fan Line Capacity",
+    assigneeEmails: ["vinod.meena@poojamachines.co.in", "kavita.rani@poojamachines.co.in"],
+    dueInDays: 2,
+    estimateHours: 10,
+    blockedReason:
+      "Bearing consignment rejected by QA (11 of 40 outside tolerance). Replacement stock not yet confirmed by the supplier — Rekha is chasing.",
+    tags: ["Production", "Blocked"],
+    updates: [
+      {
+        authorEmail: "vinod.meena@poojamachines.co.in",
+        body: "Housings are all assembled and stacked at the station. Nothing more we can do until the bearings arrive.",
+        daysAgo: 2,
+      },
+      {
+        authorEmail: "anil.gupta@poojamachines.co.in",
+        body: "Rekha has the supplier on it. If nothing is confirmed by Friday we buy locally for this batch and take the cost — the Kanpur order cannot slip again.",
+        daysAgo: 1,
+        mentionEmails: ["rekha.verma@poojamachines.co.in"],
+      },
+    ],
+  },
+
+  // --- In review ----------------------------------------------------------
+  {
+    title: "Update the incoming inspection checklist for bearings",
+    description:
+      "After the rejected consignment, the incoming checklist needs a bore-tolerance check added with a defined sample size.\n\nDraft it, run it past Suresh, and put the revision into the ISO folder with a date and a revision number.",
+    priority: "HIGH",
+    status: "REVIEW",
+    category: "Quality & Compliance",
+    assigneeEmails: ["ashok.bind@poojamachines.co.in"],
+    dueInDays: 1,
+    estimateHours: 3,
+    progressPercent: 90,
+    tags: ["Quality", "Documentation"],
+    updates: [
+      {
+        authorEmail: "ashok.bind@poojamachines.co.in",
+        body: "Draft is done — sample size set at 10% or 5 pieces, whichever is greater, with a go/no-go plug gauge on the bore. Ready for Suresh to check.",
+        daysAgo: 1,
+        progressPercent: 90,
+        mentionEmails: ["suresh.yadav@poojamachines.co.in"],
+      },
+    ],
+  },
+  {
+    title: "Calibrate the vernier sets and the micrometer",
+    description:
+      "Monthly calibration of the three vernier sets and the bench micrometer. One vernier failed last month and is still tagged out.\n\nRecord readings in the calibration register and put the certificates in the ISO folder.",
+    priority: "MEDIUM",
+    status: "REVIEW",
+    category: "Quality & Compliance",
+    assigneeEmails: ["neelam.singh@poojamachines.co.in"],
+    dueInDays: 3,
+    estimateHours: 2,
+    progressPercent: 90,
+    tags: ["Quality"],
+    recurrence: "MONTHLY",
+    recurrenceEvery: 1,
+  },
+
+  // --- Due soon -----------------------------------------------------------
+  {
+    title: "Load and dispatch the Kanpur pedestal fan order",
+    description:
+      "90 pedestal fans for the Kanpur dealer, two-tier stacked. Heavier boxes are in — use those, not the standard ones.\n\nGenerate the e-way bill before the vehicle leaves and get the LR number onto the task.",
+    priority: "HIGH",
+    status: "TODO",
+    category: "Dealer Network",
+    assigneeEmails: ["pankaj.gupta@poojamachines.co.in", "sunita.kushwaha@poojamachines.co.in"],
+    dueInDays: 1,
+    deadlineHour: 16,
+    estimateHours: 5,
+    tags: ["Dispatch"],
+    waitsOn: "Fit the replacement bearings on the fan motor batch",
+    checklist: [
+      { label: "Confirm the dealer godown is open", done: false },
+      { label: "Pick and stage 90 units", done: false },
+      { label: "Generate the e-way bill", done: false },
+      { label: "Record the LR number", done: false },
+    ],
+  },
+  {
+    title: "Second-shift trial: week three figures",
+    description:
+      "Collate output, rejection rate and overtime for the third week of the fan line second-shift trial, and put a recommendation to Anil.\n\nWeeks one and two averaged 9% up on output with rejections flat. If week three holds, we make it permanent.",
+    priority: "MEDIUM",
+    status: "IN_PROGRESS",
+    category: "Fan Line Capacity",
+    assigneeEmails: ["harpreet.singh@poojamachines.co.in"],
+    dueInDays: 2,
+    estimateHours: 3,
+    progressPercent: 45,
+    tags: ["Production"],
+    updates: [
+      {
+        authorEmail: "harpreet.singh@poojamachines.co.in",
+        body: "Output is holding at +9%. Rejections are actually down slightly, 2.1% against 2.4% on days. Overtime cost is the open question — pulling the wage numbers from Gopal.",
+        daysAgo: 1,
+        progressPercent: 45,
+        mentionEmails: ["gopal.nair@poojamachines.co.in"],
+      },
+    ],
+  },
+  {
+    title: "Train the Gurugram dealer technicians on JK-2 timing",
+    description:
+      "Four technicians at Sharma Electricals need the hook timing adjustment for the revised JK-2. This is the third stitch-skipping complaint traced to a mis-set hook.\n\nTake the training jig and leave the one-page adjustment sheet with them.",
+    priority: "MEDIUM",
+    status: "TODO",
+    category: "Dealer Network",
+    assigneeEmails: ["shabana.parveen@poojamachines.co.in"],
+    dueInDays: 4,
+    estimateHours: 4,
+    tags: ["Dealer Network"],
+  },
+
+  // --- Comfortably ahead --------------------------------------------------
+  {
+    title: "Preventive maintenance on all six presses",
+    description:
+      "Monthly preventive schedule: belts, guards, lubrication, emergency stops. Log each press in the maintenance register.\n\nPress 4's emergency stop was replaced last month — check it has bedded in.",
+    priority: "MEDIUM",
+    status: "TODO",
+    category: "Plant Maintenance",
+    assigneeEmails: ["mohan.prajapati@poojamachines.co.in", "imran.khan@poojamachines.co.in"],
+    dueInDays: 9,
+    estimateHours: 12,
+    tags: ["Maintenance", "Safety"],
+    recurrence: "MONTHLY",
+    recurrenceEvery: 1,
+    checklist: [
+      { label: "Press 1 — belts, guards, lubrication", done: false },
+      { label: "Press 2 — belts, guards, lubrication", done: false },
+      { label: "Press 3 — belts, guards, lubrication", done: false },
+      { label: "Press 4 — including the new e-stop", done: false },
+      { label: "Press 5 — belts, guards, lubrication", done: false },
+      { label: "Press 6 — belts, guards, lubrication", done: false },
+    ],
+  },
+  {
+    title: "File GSTR-1 for the month",
+    description:
+      "Match the outward register against the GST portal, resolve any mismatches with Deepak, file, and save the acknowledgement to the accounts folder.",
+    priority: "HIGH",
+    status: "TODO",
+    category: "Admin & Statutory",
+    assigneeEmails: ["gopal.nair@poojamachines.co.in"],
+    dueInDays: 6,
+    deadlineHour: 17,
+    estimateHours: 4,
+    tags: ["Documentation"],
+    recurrence: "MONTHLY",
+    recurrenceEvery: 1,
+  },
+  {
+    title: "Turn 220 needle-bar shafts on VMC-2",
+    description:
+      "Batch of 220 for the JK-2 build. Hold 0.02 mm on the bearing diameter.\n\nVMC-2 was running warm last week — maintenance cleaned the coolant sensor. Watch it and stop if the spindle alarm returns.",
+    priority: "MEDIUM",
+    status: "IN_PROGRESS",
+    category: "JK-2 Changeover",
+    assigneeEmails: ["satish.dubey@poojamachines.co.in"],
+    dueInDays: 5,
+    estimateHours: 16,
+    progressPercent: 30,
+    tags: ["Production"],
+    updates: [
+      {
+        authorEmail: "satish.dubey@poojamachines.co.in",
+        body: "65 done, all within tolerance. Spindle temperature is normal since the sensor was cleaned. New carbide inserts are cutting well.",
+        daysAgo: 2,
+        progressPercent: 30,
+      },
+    ],
+  },
+  {
+    title: "Rewire the fan-line testing panel",
+    description:
+      "The panel has tripped on earth leakage three times this month. Rewire it properly and replace the two suspect MCBs rather than resetting it again.\n\nLine has to be down for this — coordinate with Harpreet for a window.",
+    priority: "HIGH",
+    status: "COMPLETED",
+    category: "Plant Maintenance",
+    assigneeEmails: ["imran.khan@poojamachines.co.in"],
+    dueInDays: -6,
+    estimateHours: 5,
+    tags: ["Maintenance", "Safety"],
+    updates: [
+      {
+        authorEmail: "imran.khan@poojamachines.co.in",
+        body: "Rewired and both MCBs replaced. Insulation resistance tested at 12 MΩ across all three phases. No trips in two days of running.",
+        daysAgo: 5,
+        progressPercent: 100,
+      },
+      {
+        authorEmail: "anil.gupta@poojamachines.co.in",
+        body: "Good — that one had been nagging for weeks. Thanks for doing it properly rather than resetting it again.",
+        daysAgo: 5,
+      },
+    ],
+  },
+  {
+    title: "Reconcile the fan motor stock count",
+    description:
+      "Physical count showed 22 motors short against the system. Trace it — most likely a mis-posting on the issue side rather than actual loss.",
+    priority: "HIGH",
+    status: "COMPLETED",
+    category: "Admin & Statutory",
+    assigneeEmails: ["rekha.verma@poojamachines.co.in"],
+    dueInDays: -8,
+    estimateHours: 4,
+    tags: ["Dispatch", "Documentation"],
+    updates: [
+      {
+        authorEmail: "rekha.verma@poojamachines.co.in",
+        body: "Found it. A batch of 22 was issued to the assembly line on the 14th but posted against the wrong requisition number. Corrected the entry — no physical loss.",
+        daysAgo: 7,
+        progressPercent: 100,
+      },
+    ],
+  },
+  {
+    title: "Publish the revised dealer price list",
+    description:
+      "Prices move from the first of next month. Update the list, get Anil to sign it off, and circulate to all 34 dealers.",
+    priority: "MEDIUM",
+    status: "COMPLETED",
+    category: "Dealer Network",
+    assigneeEmails: ["deepak.sharma@poojamachines.co.in"],
+    dueInDays: -11,
+    estimateHours: 3,
+    tags: ["Dealer Network", "Documentation"],
+  },
+  {
+    title: "Audit the fan blade balancing station",
+    description:
+      "Internal ISO audit of the balancing station: jig condition, operator method, records. Close any observations before the external audit next month.",
+    priority: "MEDIUM",
+    status: "COMPLETED",
+    category: "Quality & Compliance",
+    assigneeEmails: ["suresh.yadav@poojamachines.co.in"],
+    dueInDays: -14,
+    estimateHours: 5,
+    tags: ["Quality", "Documentation"],
+    updates: [
+      {
+        authorEmail: "suresh.yadav@poojamachines.co.in",
+        body: "Two observations, both closed: the jig needed re-zeroing and the record sheet was missing the operator signature column. Sheet is revised and in the ISO folder.",
+        daysAgo: 13,
+        progressPercent: 100,
+      },
+    ],
+  },
+  {
+    title: "Onboard Gopal — accounts access and PF number",
+    description:
+      "Attendance card, bank details, PF number, GST portal access and the accounts folder permissions.",
+    priority: "LOW",
+    status: "COMPLETED",
+    category: "Admin & Statutory",
+    assigneeEmails: ["anil.gupta@poojamachines.co.in"],
+    dueInDays: -20,
+    estimateHours: 2,
+  },
+
+  // --- Backlog ------------------------------------------------------------
+  {
+    title: "Sort the tool crib and tag items for regrinding",
+    description:
+      "The crib has drifted. Sort by type, tag anything blunt for regrinding, and write up what needs replacing rather than sharpening.",
+    priority: "LOW",
+    status: "TODO",
+    category: "Plant Maintenance",
+    assigneeEmails: ["rajendra.tiwari@poojamachines.co.in"],
+    dueInDays: 18,
+    estimateHours: 6,
+    tags: ["Maintenance"],
+  },
+  {
+    title: "Write the one-page JK-2 adjustment sheet for dealers",
+    description:
+      "The hook timing adjustment keeps coming back as a complaint. A single laminated page with the three measurements and a diagram would stop most of them.\n\nShabana can take it to dealers on her next round.",
+    priority: "LOW",
+    status: "TODO",
+    category: "Dealer Network",
+    assigneeEmails: ["suresh.yadav@poojamachines.co.in"],
+    dueInDays: 22,
+    estimateHours: 4,
+    tags: ["Documentation", "Dealer Network"],
+  },
+  {
+    title: "Daily production count — sewing machine line",
+    description:
+      "Record the day's head count, rejections and downtime against the shift target. Two minutes at the end of the shift.",
+    priority: "LOW",
+    status: "TODO",
+    category: "JK-2 Changeover",
+    assigneeEmails: ["ramesh.sahu@poojamachines.co.in"],
+    dueInDays: 0,
+    estimateHours: 0.25,
+    tags: ["Production"],
+    recurrence: "DAILY",
+    recurrenceEvery: 1,
+  },
+  {
+    title: "Weekly rejection summary for the quality board",
+    description:
+      "Rejection percentage by station for the week, with the top three causes and what was done about them.",
+    priority: "MEDIUM",
+    status: "TODO",
+    category: "Quality & Compliance",
+    assigneeEmails: ["neelam.singh@poojamachines.co.in"],
+    dueInDays: 3,
+    estimateHours: 1.5,
+    tags: ["Quality"],
+    recurrence: "WEEKLY",
+    recurrenceEvery: 1,
+  },
+];

@@ -729,3 +729,359 @@ export function expenseDecisionEmail({
       .join("\n"),
   };
 }
+
+// ---------------------------------------------------------------------------
+//  Tasks
+// ---------------------------------------------------------------------------
+
+/** First name, for a greeting. Falls back to the whole string for mononyms. */
+function firstWord(name: string): string {
+  return name.trim().split(/s+/)[0] ?? name;
+}
+
+/** Coloured chip for a task priority, matching the in-app badge tones. */
+function priorityPill(priority: string): string {
+  const tone: Record<string, { bg: string; fg: string }> = {
+    Critical: { bg: "#fee2e2", fg: "#991b1b" },
+    High: { bg: "#fef3c7", fg: "#92400e" },
+    Medium: { bg: "#e0e7ff", fg: "#3730a3" },
+    Low: { bg: "#f1f5f9", fg: "#475569" },
+  };
+  const chosen = tone[priority] ?? tone.Medium!;
+
+  return (
+    `<span style="display:inline-block;padding:3px 9px;border-radius:999px;` +
+    `background:${chosen.bg};color:${chosen.fg};font-family:${FONT};font-size:11.5px;` +
+    `font-weight:600;letter-spacing:0.02em;">${escapeHtml(priority)}</span>`
+  );
+}
+
+/**
+ * A task has landed on someone.
+ *
+ * Carries the full description rather than a teaser: the brief asks for it, and a
+ * fitter reading this on a phone in a plant should not have to open a browser to
+ * find out what the job is.
+ *
+ * Attachments are **named, not attached**. A 50 MB video would bounce off most
+ * mailboxes, and a file that can contain anything is safer behind an authenticated
+ * page than loose in an inbox.
+ */
+export function taskAssignedEmail({
+  assigneeName,
+  assignedByName,
+  taskNumber,
+  title,
+  description,
+  priority,
+  dueOn,
+  attachmentNames,
+  taskUrl,
+}: {
+  assigneeName: string;
+  assignedByName: string;
+  taskNumber: string;
+  title: string;
+  description: string;
+  priority: string;
+  dueOn: string | null;
+  attachmentNames: string[];
+  taskUrl: string;
+}): EmailContent {
+  return {
+    subject: `${taskNumber}: ${title}`,
+    html: layout({
+      preheader: `${priority} priority${dueOn ? ` · due ${dueOn}` : ""} · from ${assignedByName}`,
+      heading: `${escapeHtml(assignedByName)} assigned you a task`,
+      body: [
+        paragraph(`Hi ${escapeHtml(firstWord(assigneeName))},`),
+        `<h2 style="margin:0 0 14px;font-family:${FONT};font-size:17px;line-height:24px;font-weight:600;color:${BRAND.ink};">${escapeHtml(
+          title,
+        )}</h2>`,
+        detailRows([
+          ["Task", escapeHtml(taskNumber)],
+          ["Priority", priorityPill(priority)],
+          ...(dueOn ? ([["Due", `<strong>${escapeHtml(dueOn)}</strong>`]] as Array<[string, string]>) : []),
+          ["Assigned by", escapeHtml(assignedByName)],
+        ]),
+        `<div style="margin:0 0 4px;font-family:${FONT};font-size:12px;font-weight:600;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.04em;">What needs doing</div>`,
+        `<div style="padding:12px 14px;border-left:3px solid ${BRAND.border};background:${BRAND.canvas};border-radius:0 8px 8px 0;font-size:13.5px;line-height:21px;">${markdownToEmailHtml(
+          description,
+        )}</div>`,
+        attachmentNames.length > 0
+          ? [
+              `<div style="margin:18px 0 4px;font-family:${FONT};font-size:12px;font-weight:600;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.04em;">Attached (${attachmentNames.length})</div>`,
+              `<ul style="margin:0 0 4px;padding-left:18px;font-family:${FONT};font-size:13px;color:${BRAND.body};">`,
+              attachmentNames
+                .map((name) => `<li style="margin:0 0 3px;">${escapeHtml(name)}</li>`)
+                .join(""),
+              "</ul>",
+              paragraph(
+                `<span style="color:${BRAND.muted};font-size:12.5px;">Open the task to view or download these.</span>`,
+              ),
+            ].join("")
+          : "",
+        button("Open the task", taskUrl),
+        paragraph(
+          `<span style="color:${BRAND.muted};font-size:13px;">Post your progress on the task itself so everyone working on it can see it.</span>`,
+        ),
+      ].join(""),
+    }),
+    text: [
+      `${assignedByName} assigned you ${taskNumber}.`,
+      "",
+      title,
+      "",
+      `Priority: ${priority}`,
+      dueOn ? `Due: ${dueOn}` : "No due date",
+      "",
+      markdownToText(description),
+      attachmentNames.length > 0 ? `\nAttached: ${attachmentNames.join(", ")}` : "",
+      "",
+      taskUrl,
+    ]
+      .filter((line) => line !== "")
+      .join("\n"),
+  };
+}
+
+/** 24 hours out, or already late. One template, two tones. */
+export function taskDeadlineEmail({
+  assigneeName,
+  taskNumber,
+  title,
+  priority,
+  dueOn,
+  overdue,
+  daysLate,
+  progressPercent,
+  taskUrl,
+}: {
+  assigneeName: string;
+  taskNumber: string;
+  title: string;
+  priority: string;
+  dueOn: string;
+  overdue: boolean;
+  daysLate: number;
+  progressPercent: number;
+  taskUrl: string;
+}): EmailContent {
+  return {
+    subject: overdue
+      ? `Overdue: ${taskNumber} — ${title}`
+      : `Due tomorrow: ${taskNumber} — ${title}`,
+    html: layout({
+      preheader: overdue
+        ? `${daysLate} day${daysLate === 1 ? "" : "s"} past its due date.`
+        : `Due ${dueOn}.`,
+      heading: overdue ? "This task is overdue" : "This task is due tomorrow",
+      body: [
+        paragraph(`Hi ${escapeHtml(firstWord(assigneeName))},`),
+        `<h2 style="margin:0 0 14px;font-family:${FONT};font-size:17px;line-height:24px;font-weight:600;color:${BRAND.ink};">${escapeHtml(
+          title,
+        )}</h2>`,
+        `<p style="margin:0 0 16px;">${statusPill(
+          overdue ? `${daysLate} day${daysLate === 1 ? "" : "s"} late` : "Due tomorrow",
+          overdue ? "danger" : "warning",
+        )}</p>`,
+        detailRows([
+          ["Task", escapeHtml(taskNumber)],
+          ["Priority", priorityPill(priority)],
+          ["Due", `<strong>${escapeHtml(dueOn)}</strong>`],
+          ["Progress", `${progressPercent}%`],
+        ]),
+        paragraph(
+          overdue
+            ? "If it is finished, mark it complete. If something is holding it up, set it to blocked with a reason so it can be cleared."
+            : "If it is on track, no action needed. If it will slip, say so on the task now rather than tomorrow.",
+        ),
+        button(overdue ? "Update the task" : "Open the task", taskUrl),
+      ].join(""),
+    }),
+    text: [
+      overdue
+        ? `${taskNumber} is ${daysLate} day(s) overdue.`
+        : `${taskNumber} is due tomorrow.`,
+      "",
+      title,
+      `Priority: ${priority}`,
+      `Due: ${dueOn}`,
+      `Progress: ${progressPercent}%`,
+      "",
+      taskUrl,
+    ].join("\n"),
+  };
+}
+
+export function taskMentionEmail({
+  recipientName,
+  authorName,
+  taskNumber,
+  title,
+  body,
+  taskUrl,
+}: {
+  recipientName: string;
+  authorName: string;
+  taskNumber: string;
+  title: string;
+  body: string;
+  taskUrl: string;
+}): EmailContent {
+  return {
+    subject: `${authorName} mentioned you on ${taskNumber}`,
+    html: layout({
+      preheader: `${title} — ${markdownToText(body).slice(0, 90)}`,
+      heading: `${escapeHtml(authorName)} mentioned you`,
+      body: [
+        paragraph(`Hi ${escapeHtml(firstWord(recipientName))},`),
+        paragraph(`On <strong>${escapeHtml(taskNumber)}</strong> — ${escapeHtml(title)}:`),
+        `<div style="padding:12px 14px;border-left:3px solid ${BRAND.accent};background:${BRAND.accentSoft};border-radius:0 8px 8px 0;font-size:13.5px;line-height:21px;">${markdownToEmailHtml(
+          body,
+        )}</div>`,
+        button("Reply on the task", taskUrl),
+      ].join(""),
+    }),
+    text: [
+      `${authorName} mentioned you on ${taskNumber} — ${title}.`,
+      "",
+      markdownToText(body),
+      "",
+      taskUrl,
+    ].join("\n"),
+  };
+}
+
+export interface TaskDigestSection {
+  heading: string;
+  tone: "neutral" | "success" | "warning" | "danger";
+  items: Array<{
+    taskNumber: string;
+    title: string;
+    assignees: string;
+    detail: string;
+    url: string;
+  }>;
+}
+
+/**
+ * The grouped report from section 8 of the brief.
+ *
+ * Deliberately *not* one email per update. Twenty people posting three updates a day
+ * is sixty emails an admin will filter into a folder and stop reading, at which point
+ * the notification system has achieved nothing. One scannable digest, grouped by what
+ * needs attention first, is read.
+ *
+ * Sections arrive pre-ordered by urgency and empty ones are dropped by the caller, so
+ * a quiet day produces a short email rather than a page of "nothing to report".
+ */
+export function taskDigestEmail({
+  recipientName,
+  periodLabel,
+  sections,
+  stats,
+  dashboardUrl,
+}: {
+  recipientName: string;
+  periodLabel: string;
+  sections: TaskDigestSection[];
+  stats: {
+    updated: number;
+    completed: number;
+    overdue: number;
+    blocked: number;
+    awaitingReview: number;
+  };
+  dashboardUrl: string;
+}): EmailContent {
+  const toneColour: Record<TaskDigestSection["tone"], string> = {
+    neutral: BRAND.muted,
+    success: "#047857",
+    warning: "#92400e",
+    danger: "#991b1b",
+  };
+
+  const statCard = (label: string, value: number, emphasis = false) =>
+    `<td style="padding:0 6px 0 0;" width="20%">` +
+    `<div style="border:1px solid ${BRAND.border};border-radius:8px;padding:10px 8px;text-align:center;background:${
+      emphasis && value > 0 ? "#fef2f2" : BRAND.surface
+    };">` +
+    `<div style="font-family:${FONT};font-size:20px;font-weight:600;color:${
+      emphasis && value > 0 ? "#991b1b" : BRAND.ink
+    };line-height:1;">${value}</div>` +
+    `<div style="font-family:${FONT};font-size:10.5px;color:${BRAND.muted};margin-top:4px;text-transform:uppercase;letter-spacing:0.03em;">${escapeHtml(
+      label,
+    )}</div>` +
+    `</div></td>`;
+
+  const sectionHtml = sections
+    .map((section) =>
+      [
+        `<div style="margin:22px 0 8px;font-family:${FONT};font-size:12px;font-weight:700;color:${
+          toneColour[section.tone]
+        };text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(section.heading)} (${section.items.length})</div>`,
+        `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">`,
+        section.items
+          .map(
+            (item) =>
+              `<tr><td style="padding:9px 0;border-bottom:1px solid ${BRAND.border};font-family:${FONT};">` +
+              `<a href="${item.url}" style="color:${BRAND.accent};text-decoration:none;font-size:13.5px;font-weight:600;">${escapeHtml(
+                item.taskNumber,
+              )}</a> ` +
+              `<span style="color:${BRAND.ink};font-size:13.5px;">${escapeHtml(item.title)}</span>` +
+              `<div style="margin-top:3px;font-size:11.5px;color:${BRAND.muted};">${escapeHtml(
+                item.assignees,
+              )} · ${escapeHtml(item.detail)}</div>` +
+              `</td></tr>`,
+          )
+          .join(""),
+        `</table>`,
+      ].join(""),
+    )
+    .join("");
+
+  return {
+    subject:
+      stats.overdue > 0
+        ? `Task report — ${periodLabel} (${stats.overdue} overdue)`
+        : `Task report — ${periodLabel}`,
+    html: layout({
+      preheader:
+        `${stats.updated} updated · ${stats.completed} completed · ${stats.overdue} overdue · ` +
+        `${stats.blocked} blocked`,
+      heading: `Task report — ${escapeHtml(periodLabel)}`,
+      body: [
+        paragraph(`Hi ${escapeHtml(firstWord(recipientName))}, here is where the work stands.`),
+        `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;margin:0 0 4px;"><tr>`,
+        statCard("Updated", stats.updated),
+        statCard("Completed", stats.completed),
+        statCard("In review", stats.awaitingReview),
+        statCard("Blocked", stats.blocked, true),
+        statCard("Overdue", stats.overdue, true),
+        `</tr></table>`,
+        sections.length > 0
+          ? sectionHtml
+          : paragraph(
+              `<span style="color:${BRAND.muted};">Nothing moved in this period — no updates, and nothing overdue.</span>`,
+            ),
+        button("Open the task dashboard", dashboardUrl),
+      ].join(""),
+    }),
+    text: [
+      `Task report — ${periodLabel}`,
+      "",
+      `Updated: ${stats.updated}   Completed: ${stats.completed}   In review: ${stats.awaitingReview}`,
+      `Blocked: ${stats.blocked}   Overdue: ${stats.overdue}`,
+      "",
+      ...sections.flatMap((section) => [
+        `${section.heading.toUpperCase()} (${section.items.length})`,
+        ...section.items.map(
+          (item) => `  ${item.taskNumber}  ${item.title}\n    ${item.assignees} · ${item.detail}`,
+        ),
+        "",
+      ]),
+      dashboardUrl,
+    ].join("\n"),
+  };
+}

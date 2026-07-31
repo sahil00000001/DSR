@@ -6,12 +6,17 @@ import { getAttendanceBoard } from "@/lib/services/attendance";
 import { listLeaveRequests } from "@/lib/services/leave";
 import { listEmployees } from "@/lib/services/people";
 import { listExpensesForExport } from "@/lib/services/expenses";
+import { getAdminTaskSnapshot, listTasks, taskVisibilityFor } from "@/lib/services/tasks";
 import { markdownToText } from "@/lib/utils/markdown";
 import {
   ATTENDANCE_STATUS_LABEL,
   DSR_STATUS_LABEL,
   EXPENSE_CATEGORY_LABEL,
   EXPENSE_STATUS_LABEL,
+  TASK_ACTIVITY_LABEL,
+  TASK_PRIORITY_LABEL,
+  TASK_STATUS_LABEL,
+  asTaskActivityKind,
   LEAVE_STATUS_LABEL,
   LEAVE_TYPE_LABEL,
   ROLE_LABEL,
@@ -51,7 +56,10 @@ export type ExportKind =
   | "employees"
   | "departments"
   | "dsr-completion"
-  | "expenses";
+  | "expenses"
+  | "tasks"
+  | "task-performance"
+  | "task-activity";
 
 /** Reads a `?month=YYYY-MM` param, defaulting to the current month. */
 function monthRange(monthParam: string | null) {
@@ -63,6 +71,23 @@ function monthRange(monthParam: string | null) {
   }
   const now = today();
   return { start: startOfMonth(now), end: endOfMonth(now) };
+}
+
+/** Reads the same query parameters the task screens use, so an export matches the view. */
+function taskFiltersFrom(params: URLSearchParams) {
+  const list = (key: string) => params.get(key)?.split(",").filter(Boolean);
+  return {
+    q: params.get("q") ?? undefined,
+    status: list("status"),
+    priority: list("priority"),
+    assignee: list("assignee"),
+    createdBy: list("createdBy"),
+    category: list("category"),
+    tag: list("tag"),
+    department: list("department"),
+    from: tryParseDayKey(params.get("from")) ?? undefined,
+    to: tryParseDayKey(params.get("to")) ?? undefined,
+  };
 }
 
 export async function buildDataset(
@@ -294,6 +319,104 @@ export async function buildDataset(
           { header: "Decided at", value: (row) => row.decidedAt, width: 18 },
           { header: "Decision note", value: (row) => row.decisionNote ?? "", width: 36 },
           { header: "Reimbursed at", value: (row) => row.reimbursedAt, width: 18 },
+        ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
+      } as Dataset;
+    }
+
+
+    case "tasks": {
+      const { rows } = await listTasks(taskFiltersFrom(params), actor, { pageSize: 5000 });
+
+      return {
+        filename: "tasks",
+        sheetName: "Tasks",
+        rows,
+        columns: [
+          { header: "Task no.", value: (row) => row.taskNumber, width: 12 },
+          { header: "Title", value: (row) => row.title, width: 44 },
+          { header: "Status", value: (row) => TASK_STATUS_LABEL[row.status], width: 14 },
+          { header: "Priority", value: (row) => TASK_PRIORITY_LABEL[row.priority], width: 11 },
+          { header: "Project", value: (row) => row.category?.name ?? "", width: 20 },
+          // One cell, comma-joined: a task can have several assignees, and a
+          // spreadsheet row cannot.
+          { header: "Assigned to", value: (row) => row.assignees.map((p) => p.name).join(", "), width: 30 },
+          { header: "Department", value: (row) => row.assignees[0]?.department ?? "", width: 18 },
+          { header: "Due", value: (row) => row.dueOn, width: 12 },
+          { header: "Deadline", value: (row) => row.deadlineAt, width: 18 },
+          { header: "Progress %", value: (row) => row.progressPercent, width: 11 },
+          // Hours, not minutes: the column is read by people.
+          { header: "Estimate (hrs)", value: (row) => (row.estimateMinutes ? row.estimateMinutes / 60 : ""), width: 13 },
+          { header: "Checklist done", value: (row) => (row.counts.checklist > 0 ? `${row.counts.checklistDone}/${row.counts.checklist}` : ""), width: 13 },
+          { header: "Updates", value: (row) => row.counts.updates, width: 9 },
+          { header: "Files", value: (row) => row.counts.attachments, width: 8 },
+          { header: "Tags", value: (row) => row.tags.map((t) => t.name).join(", "), width: 24 },
+          { header: "Waits on", value: (row) => row.dependsOn.map((d) => d.taskNumber).join(", "), width: 16 },
+          { header: "Blocked reason", value: (row) => row.blockedReason ?? "", width: 36 },
+          { header: "Created by", value: (row) => row.createdBy.name, width: 20 },
+          { header: "Created", value: (row) => row.createdAt, width: 18 },
+          { header: "Started", value: (row) => row.startedAt, width: 18 },
+          { header: "Completed", value: (row) => row.completedAt, width: 18 },
+          { header: "Description", value: (row) => markdownToText(row.description), width: 60 },
+        ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
+      } as Dataset;
+    }
+
+    case "task-performance": {
+      const snapshot = await getAdminTaskSnapshot(actor);
+      const rows = snapshot.workload;
+
+      return {
+        filename: "task-performance",
+        sheetName: "Performance",
+        rows,
+        columns: [
+          { header: "Employee", value: (row) => row.user.name, width: 24 },
+          { header: "Department", value: (row) => row.user.department ?? "", width: 18 },
+          { header: "Open tasks", value: (row) => row.open, width: 12 },
+          { header: "Overdue", value: (row) => row.overdue, width: 10 },
+          { header: "Completed", value: (row) => row.completed, width: 12 },
+          { header: "Average progress %", value: (row) => row.averageProgress, width: 18 },
+          {
+            header: "On-time rate %",
+            // Of everything assigned, the share that is not currently late. Derived
+            // here rather than stored, so it cannot go stale.
+            value: (row) =>
+              row.open + row.completed === 0
+                ? ""
+                : Math.round(((row.open + row.completed - row.overdue) / (row.open + row.completed)) * 100),
+            width: 15,
+          },
+        ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
+      } as Dataset;
+    }
+
+    case "task-activity": {
+      const rows = await prisma.taskActivity.findMany({
+        where: { task: taskVisibilityFor(actor) },
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+        select: {
+          createdAt: true,
+          kind: true,
+          comment: true,
+          meta: true,
+          actor: { select: { name: true } },
+          task: { select: { taskNumber: true, title: true } },
+        },
+      });
+
+      return {
+        filename: "task-activity",
+        sheetName: "Activity",
+        rows,
+        columns: [
+          { header: "When", value: (row) => row.createdAt, width: 18 },
+          { header: "Task no.", value: (row) => row.task.taskNumber, width: 12 },
+          { header: "Task", value: (row) => row.task.title, width: 40 },
+          { header: "Who", value: (row) => row.actor?.name ?? "System", width: 22 },
+          { header: "Action", value: (row) => TASK_ACTIVITY_LABEL[asTaskActivityKind(row.kind)], width: 30 },
+          { header: "Note", value: (row) => row.comment ?? "", width: 44 },
+          { header: "Detail", value: (row) => row.meta ?? "", width: 40 },
         ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
       } as Dataset;
     }

@@ -5,8 +5,10 @@ import {
   CalendarCheck,
   FileSpreadsheet,
   FileText,
+  ListChecks,
   Plane,
   Receipt,
+  ScrollText,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -42,8 +44,16 @@ export default async function ReportsPage() {
   const monthKey = toDayKey(startOfMonth(now)).slice(0, 7);
   const trailing30 = lastNDays(30, now);
 
-  const [dsrCount, attendanceCount, leaveCount, employeeCount, departmentCount, expenseCount] =
-    await Promise.all([
+  const [
+    dsrCount,
+    attendanceCount,
+    leaveCount,
+    employeeCount,
+    departmentCount,
+    expenseCount,
+    taskCount,
+    taskActivityCount,
+  ] = await Promise.all([
       prisma.dailyStatusReport.count({
         where: { date: { gte: trailing30.start, lte: trailing30.end } },
       }),
@@ -52,6 +62,8 @@ export default async function ReportsPage() {
       prisma.user.count({ where: { status: { not: "DISABLED" } } }),
       prisma.department.count(),
       prisma.expenseClaim.count({ where: { status: { not: "DRAFT" } } }),
+      prisma.task.count(),
+      prisma.taskActivity.count({ where: { createdAt: { gte: trailing30.start } } }),
     ]);
 
   return (
@@ -110,6 +122,30 @@ export default async function ReportsPage() {
           description="Expected versus filed per person, adjusted for holidays and approved leave."
           meta="Derived — recomputed at download"
           rangeControl
+        />
+
+        <ReportCard
+          kind="tasks"
+          icon={<ListChecks />}
+          title="Tasks"
+          description="Every task with its assignees, priority, dates, progress, checklist state and description. Respects the same filters as the task screens."
+          meta={`${formatNumber(taskCount)} tasks`}
+        />
+
+        <ReportCard
+          kind="task-performance"
+          icon={<TrendingUp />}
+          title="Team performance"
+          description="Per person: open, overdue and completed tasks, average progress and an on-time rate."
+          meta="Derived — recomputed at download"
+        />
+
+        <ReportCard
+          kind="task-activity"
+          icon={<ScrollText />}
+          title="Task activity log"
+          description="The full timeline across every task you can see — who did what, when, with the before and after."
+          meta={`${formatNumber(taskActivityCount)} entries in 30 days`}
         />
 
         <ReportCard

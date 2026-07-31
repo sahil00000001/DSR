@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   Megaphone,
+  ListChecks,
   Plane,
   Receipt,
   ScrollText,
@@ -32,7 +33,9 @@ export type BadgeKey =
   | "dsrToReview"
   | "openDsr"
   | "unreadNotifications"
-  | "expensesToDecide";
+  | "expensesToDecide"
+  | "myOpenTasks"
+  | "tasksInReview";
 
 export interface NavItem {
   href: string;
@@ -64,6 +67,14 @@ const SECTIONS: NavSection[] = [
         icon: LayoutDashboard,
         exact: true,
         keywords: ["home", "overview", "today"],
+      },
+      {
+        href: "/tasks",
+        label: "My tasks",
+        icon: ListChecks,
+        exact: true,
+        badge: "myOpenTasks",
+        keywords: ["task", "todo", "assigned", "kanban", "board", "deadline", "work"],
       },
       {
         href: "/dsr",
@@ -121,6 +132,14 @@ const SECTIONS: NavSection[] = [
         roles: MANAGEMENT,
         badge: "pendingLeave",
         keywords: ["approve", "reject", "pending"],
+      },
+      {
+        href: "/tasks?scope=all&status=REVIEW",
+        label: "Task review",
+        icon: ListChecks,
+        roles: MANAGEMENT,
+        badge: "tasksInReview",
+        keywords: ["approve task", "review", "sign off"],
       },
       {
         href: "/expenses/review",
@@ -214,7 +233,7 @@ export function navItemsFor(role: Role): NavItem[] {
  */
 export function mobileTabsFor(role: Role): NavItem[] {
   const items = navItemsFor(role);
-  const wanted = ["/dashboard", "/dsr", "/attendance", "/leave"];
+  const wanted = ["/dashboard", "/tasks", "/dsr", "/attendance"];
   return wanted
     .map((href) => items.find((item) => item.href === href))
     .filter((item): item is NavItem => Boolean(item));

@@ -96,6 +96,56 @@ export const can = {
   /** The admin review queue. */
   viewExpenseQueue: (actor: Actor) => isAdmin(actor),
 
+  // --- Tasks ---------------------------------------------------------------
+
+  /**
+   * Create and assign work. Admins only, per section 12 of the brief.
+   *
+   * Managers deliberately cannot: on a shop floor where the works manager owns the
+   * schedule, two people assigning the same fitter is worse than one bottleneck.
+   */
+  createTask: (actor: Actor) => isAdmin(actor),
+
+  /** Edit the details — title, description, priority, dates, category. */
+  editTask: (actor: Actor) => isAdmin(actor),
+
+  deleteTask: (actor: Actor) => isAdmin(actor),
+  reassignTask: (actor: Actor) => isAdmin(actor),
+
+  /**
+   * Read a task: an assignee, its creator, an admin, or a manager whose reporting
+   * line is on it. `assigneeIds` is passed rather than looked up here so the policy
+   * stays a pure function.
+   */
+  viewTask: (
+    actor: Actor,
+    task: { createdById: string; assigneeIds: readonly string[]; assigneeManagerIds: readonly (string | null)[] },
+  ) =>
+    isAdmin(actor) ||
+    task.createdById === actor.id ||
+    task.assigneeIds.includes(actor.id) ||
+    (isManager(actor) && task.assigneeManagerIds.includes(actor.id)),
+
+  /**
+   * Post an update, upload a file, record a voice note, tick a checklist item.
+   *
+   * Assignees and admins. A manager who can *see* a task cannot post on it — their
+   * access is for context, and an update from someone not doing the work muddies
+   * the thread the assignee is expected to keep.
+   */
+  updateTask: (actor: Actor, task: { assigneeIds: readonly string[] }) =>
+    isAdmin(actor) || task.assigneeIds.includes(actor.id),
+
+  /** Move it between statuses, including marking it complete. */
+  changeTaskStatus: (actor: Actor, task: { assigneeIds: readonly string[] }) =>
+    isAdmin(actor) || task.assigneeIds.includes(actor.id),
+
+  /** The org-wide board, calendar and timeline across everyone's tasks. */
+  viewAllTasks: (actor: Actor) => isManagerOrAdmin(actor),
+
+  /** Task categories and the shared tag vocabulary. */
+  manageTaskCategories: (actor: Actor) => isAdmin(actor),
+
   // --- Attendance ----------------------------------------------------------
 
   markOwnAttendance: (_actor: Actor) => true,

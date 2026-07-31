@@ -9,6 +9,12 @@ import { pruneOldNotifications } from "@/lib/services/notifications";
 import { pruneExpiredTokens } from "@/lib/auth/tokens";
 import { recordSystemAudit } from "@/lib/services/audit";
 import { getReportStreak } from "@/lib/services/shell";
+import { sendTaskDeadlineReminders } from "@/lib/services/task-reminders";
+import { buildTaskDigest } from "@/lib/services/task-digest";
+import { spawnRecurringTasks } from "@/server/actions/tasks";
+import { getTaskAdmins } from "@/lib/services/tasks";
+import { taskDigestEmail } from "@/lib/email/templates";
+import { subDays } from "@/lib/utils/date";
 import { formatDayLong, isWeekend, toDayKey, today } from "@/lib/utils/date";
 
 /**
@@ -114,12 +120,20 @@ export async function GET(request: NextRequest) {
         }),
       }));
 
-    const [dsrResult, attendanceResult, prunedNotifications, prunedTokens] = await Promise.all([
-      sendBulkEmail(dsrEmails),
-      sendBulkEmail(attendanceEmails),
-      pruneOldNotifications(60),
-      pruneExpiredTokens(),
-    ]);
+    // Recurring tasks are spawned *before* reminders run, so an occurrence created
+    // this morning is included in today's deadline sweep rather than waiting a day.
+    const recurrence = await spawnRecurringTasks();
+
+    const [dsrResult, attendanceResult, prunedNotifications, prunedTokens, taskReminders] =
+      await Promise.all([
+        sendBulkEmail(dsrEmails),
+        sendBulkEmail(attendanceEmails),
+        pruneOldNotifications(60),
+        pruneExpiredTokens(),
+        sendTaskDeadlineReminders(),
+      ]);
+
+    const digest = await sendTaskDigest();
 
     const summary = {
       date: toDayKey(now),
@@ -127,6 +141,11 @@ export async function GET(request: NextRequest) {
       dsrEmailsSent: dsrResult.sent,
       attendanceReminders: missingAttendance.length,
       attendanceEmailsSent: attendanceResult.sent,
+      tasksSpawned: recurrence.spawned,
+      taskDueSoon: taskReminders.dueSoon,
+      taskOverdue: taskReminders.overdue,
+      taskReminderEmails: taskReminders.emails,
+      digestsSent: digest,
       prunedNotifications,
       prunedTokens,
     };
@@ -139,4 +158,38 @@ export async function GET(request: NextRequest) {
     logger.error("Cron reminders failed", error);
     return NextResponse.json({ error: "Reminder job failed" }, { status: 500 });
   }
+}
+
+/**
+ * Sends the grouped task report to each admin.
+ *
+ * The window is the last 24 hours, matching the daily cron. Sending nothing when
+ * nothing happened is deliberate: a digest that arrives every evening saying "no
+ * changes" trains people to delete it unread, which is exactly the failure the digest
+ * exists to avoid.
+ */
+async function sendTaskDigest(): Promise<number> {
+  const digest = await buildTaskDigest({
+    since: subDays(today(), 1),
+    label: formatDayLong(today()),
+  });
+  if (!digest) return 0;
+
+  const admins = (await getTaskAdmins()).filter((admin) => admin.notifyByEmail);
+  if (admins.length === 0) return 0;
+
+  const result = await sendBulkEmail(
+    admins.map((admin) => ({
+      to: admin.email,
+      content: taskDigestEmail({
+        recipientName: admin.name,
+        periodLabel: formatDayLong(today()),
+        sections: digest.sections,
+        stats: digest.stats,
+        dashboardUrl: `${env.NEXT_PUBLIC_APP_URL}/tasks`,
+      }),
+    })),
+  );
+
+  return result.sent;
 }

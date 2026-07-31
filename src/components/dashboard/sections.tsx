@@ -7,6 +7,12 @@ import { isManagerOrAdmin } from "@/lib/auth/rbac";
 import { getDashboardData } from "@/lib/services/analytics";
 import { getLeaveBalances, listMyLeave } from "@/lib/services/leave";
 import { countClaimsAwaitingDecision, getExpenseSnapshot } from "@/lib/services/expenses";
+import {
+  getAdminTaskSnapshot,
+  getRecentTaskActivity,
+  getUpcomingTasks,
+  getUserTaskSnapshot,
+} from "@/lib/services/tasks";
 import { getDsrForDate } from "@/lib/services/dsr";
 import { getTodayAttendance } from "@/lib/services/attendance";
 import { getUpcoming } from "@/lib/services/calendar";
@@ -16,6 +22,11 @@ import { formatDayLong, formatDayRange, today } from "@/lib/utils/date";
 import { firstName, formatHours, formatPercent } from "@/lib/utils/format";
 import { TodayCard } from "@/components/dashboard/today-card";
 import { ExpenseCard } from "@/components/dashboard/expense-card";
+import {
+  MyTasksCard,
+  TaskActivityCard,
+  TeamWorkloadCard,
+} from "@/components/dashboard/task-cards";
 import {
   ActivityFeedCard,
   AnnouncementBanner,
@@ -117,6 +128,41 @@ export async function LeaveSection() {
     .reduce((sum, request) => sum + request.days, 0);
 
   return <LeaveBalanceCard balances={balances} pendingCount={pendingDays} />;
+}
+
+export async function MyTasksSection() {
+  const user = await requireUser();
+
+  const [snapshot, upcoming] = await Promise.all([
+    getUserTaskSnapshot(user.id),
+    getUpcomingTasks(user.id, 4),
+  ]);
+
+  // Nothing assigned and nothing finished: the card would be a permanent empty
+  // prompt, so it is not rendered until there is something to say.
+  if (snapshot.assigned === 0 && snapshot.completedThisMonth === 0) return null;
+
+  return <MyTasksCard snapshot={snapshot} upcoming={upcoming} />;
+}
+
+export async function TeamWorkloadSection() {
+  const user = await requireUser();
+  if (!isManagerOrAdmin(user)) return null;
+
+  const snapshot = await getAdminTaskSnapshot(user);
+  if (snapshot.total === 0) return null;
+
+  return <TeamWorkloadCard snapshot={snapshot} />;
+}
+
+export async function TaskActivitySection() {
+  const user = await requireUser();
+  if (!isManagerOrAdmin(user)) return null;
+
+  const activity = await getRecentTaskActivity(user, 8);
+  if (activity.length === 0) return null;
+
+  return <TaskActivityCard activity={activity} />;
 }
 
 export async function ExpenseSection() {

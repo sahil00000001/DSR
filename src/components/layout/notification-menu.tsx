@@ -3,14 +3,20 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlarmClock,
+  AtSign,
+  Ban,
   Bell,
   CalendarCheck,
+  CalendarClock,
   CheckCheck,
   ClipboardCheck,
   FileText,
   IndianRupee,
   Megaphone,
+  ListChecks,
   MessageSquare,
+  Paperclip,
   Plane,
   Receipt,
 } from "lucide-react";
@@ -47,6 +53,15 @@ const ICONS: Partial<Record<NotificationType, typeof Bell>> = {
   EXPENSE_REJECTED: Receipt,
   EXPENSE_REIMBURSED: IndianRupee,
   EXPENSE_COMMENT: MessageSquare,
+  TASK_ASSIGNED: ListChecks,
+  TASK_UPDATED: ListChecks,
+  TASK_MENTION: AtSign,
+  TASK_ATTACHMENT: Paperclip,
+  TASK_DUE_SOON: AlarmClock,
+  TASK_OVERDUE: AlarmClock,
+  TASK_DEADLINE_CHANGED: CalendarClock,
+  TASK_COMPLETED: CheckCheck,
+  TASK_BLOCKED: Ban,
   ANNOUNCEMENT: Megaphone,
 };
 
@@ -58,6 +73,12 @@ const TONE: Partial<Record<NotificationType, string>> = {
   EXPENSE_APPROVED: "text-success",
   EXPENSE_REJECTED: "text-danger",
   EXPENSE_REIMBURSED: "text-success",
+  TASK_ASSIGNED: "text-accent",
+  TASK_MENTION: "text-accent",
+  TASK_OVERDUE: "text-danger",
+  TASK_BLOCKED: "text-danger",
+  TASK_COMPLETED: "text-success",
+  TASK_DUE_SOON: "text-warning",
   ANNOUNCEMENT: "text-accent",
 };
 

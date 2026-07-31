@@ -149,6 +149,13 @@ model User {
   expenseClaims     ExpenseClaim[]     @relation("ExpenseClaimant")
   expenseDecisions  ExpenseClaim[]     @relation("ExpenseDecider")
   expenseComments   ExpenseComment[]
+  tasksCreated      Task[]              @relation("TaskCreator")
+  taskAssignments   TaskAssignee[]      @relation("TaskAssignee")
+  taskAssignmentsMade TaskAssignee[]    @relation("TaskAssigner")
+  taskUpdates       TaskUpdate[]        @relation("TaskUpdateAuthor")
+  taskMentions      TaskMention[]       @relation("TaskMentioned")
+  taskActivities    TaskActivity[]      @relation("TaskActivityActor")
+  checklistDone     TaskChecklistItem[] @relation("ChecklistCompleter")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -408,6 +415,12 @@ model Attachment {
   expenseClaimId String?
   expenseClaim   ExpenseClaim? @relation(fields: [expenseClaimId], references: [id], onDelete: Cascade)
 
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  taskUpdateId String?
+  taskUpdate   TaskUpdate? @relation(fields: [taskUpdateId], references: [id], onDelete: Cascade)
+
   /// Storage object path within the private bucket. Signed on demand for viewing;
   /// never a public URL.
   storagePath String?
@@ -417,6 +430,8 @@ model Attachment {
   @@index([dsrId])
   @@index([leaveRequestId])
   @@index([expenseClaimId])
+  @@index([taskId])
+  @@index([taskUpdateId])
 }
 
 model AuditLog {
@@ -523,4 +538,320 @@ model ExpenseComment {
   createdAt DateTime @default(now())
 
   @@index([claimId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+//  Tasks
+// ---------------------------------------------------------------------------
+
+/// A unit of assigned work.
+///
+/// ## Why this is not just a report with a due date
+///
+/// A status report records what happened; a task is a commitment about what will.
+/// That difference drives the shape here: a task has assignees (plural), a deadline
+/// the system can chase, a progress figure, and a status it moves through — none of
+/// which a report needs.
+///
+/// ## Deadlines are two fields, deliberately
+///
+/// `dueOn` is a calendar day at UTC midnight, like every other date in this schema,
+/// and is what the calendar and "days remaining" work from. `deadlineAt` is an
+/// optional exact instant for the cases where the hour matters ("before the 2pm
+/// changeover"). Reminders fire off whichever is present, preferring the instant.
+model Task {
+  id String @id @default(cuid())
+
+  /// Human reference shown to people and quoted in emails, e.g. "TSK-0042".
+  taskNumber String @unique
+
+  title String
+  /// Markdown. Rendered by the same parser as reports and announcements, which
+  /// builds React nodes rather than HTML — so a description cannot inject markup.
+  description String
+
+  /// LOW | MEDIUM | HIGH | CRITICAL
+  priority String @default("MEDIUM")
+  /// TODO | IN_PROGRESS | REVIEW | COMPLETED | BLOCKED
+  status   String @default("TODO")
+
+  categoryId String?
+  category   TaskCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  /// Calendar day, UTC midnight.
+  dueOn      DateTime?
+  /// Optional exact instant, when the hour matters.
+  deadlineAt DateTime?
+
+  /// Estimated effort in minutes. Minutes rather than hours so half-hours need no
+  /// float — the same reasoning as money in paise.
+  estimateMinutes Int?
+
+  /// 0-100. Set explicitly, or derived from the checklist when one exists.
+  progressPercent Int @default(0)
+
+  createdById String
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  /// Set when a completed task is reopened, so "was this ever finished?" survives.
+  reopenedAt  DateTime?
+
+  /// Why it is blocked, shown wherever the BLOCKED status is.
+  blockedReason String?
+
+  // --- Recurrence ---------------------------------------------------------
+  /// NONE | DAILY | WEEKLY | MONTHLY. A recurring task is a *template*: the cron
+  /// spawns a fresh copy each period rather than mutating one row, so every
+  /// occurrence keeps its own updates, timeline and completion record.
+  recurrence         String    @default("NONE")
+  /// Every N days/weeks/months.
+  recurrenceEvery    Int       @default(1)
+  recurrenceUntil    DateTime?
+  /// Set on spawned copies, pointing at the template they came from.
+  recurrenceParentId String?
+  recurrenceParent   Task?     @relation("TaskRecurrence", fields: [recurrenceParentId], references: [id], onDelete: SetNull)
+  recurrenceChildren Task[]    @relation("TaskRecurrence")
+  /// Last period the cron spawned, which is what makes re-running it idempotent.
+  lastSpawnedFor     DateTime?
+
+  // --- Reminder bookkeeping ----------------------------------------------
+  /// Stamped when the 24-hour reminder and the overdue notice have gone out. This
+  /// is what keeps the cron safe to run repeatedly.
+  dueSoonRemindedAt DateTime?
+  overdueNotifiedAt DateTime?
+
+  assignees      TaskAssignee[]
+  updates        TaskUpdate[]
+  activities     TaskActivity[]
+  attachments    Attachment[]
+  tagLinks       TaskTagLink[]
+  checklistItems TaskChecklistItem[]
+
+  /// Tasks this one waits on.
+  dependsOn TaskDependency[] @relation("TaskDependent")
+  /// Tasks waiting on this one.
+  blocks    TaskDependency[] @relation("TaskBlocker")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([dueOn])
+  @@index([createdById])
+  @@index([categoryId])
+  @@index([status, dueOn])
+  @@index([recurrence])
+}
+
+/// Grouping for tasks — a project, a line, or a workstream.
+model TaskCategory {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  /// Token name from the chart palette, e.g. "indigo".
+  color       String  @default("indigo")
+  archived    Boolean @default(false)
+
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+
+  @@index([archived])
+}
+
+/// Join row for assignment.
+///
+/// A table rather than an implicit many-to-many, because assignment carries facts of
+/// its own: who assigned it and when. "Reassigned by the works manager on Tuesday"
+/// is exactly the kind of thing an audit trail gets asked for later.
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("TaskAssignee", fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedById String?
+  assignedBy   User?   @relation("TaskAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  assignedAt DateTime  @default(now())
+  /// Per-assignee acknowledgement, so "has anyone actually read this?" is answerable.
+  seenAt     DateTime?
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@index([taskId])
+}
+
+/// A posted update on a task — the threaded conversation.
+///
+/// Updates are additive and never overwrite one another, which is the whole point:
+/// a third update saying "still blocked on the bearing lot" is only meaningful
+/// beside the first two.
+model TaskUpdate {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("TaskUpdateAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  /// Markdown, same renderer as the description.
+  body String
+
+  /// Threading: a reply points at the update it answers. One level is enough for a
+  /// 20-person shop — deeper nesting reads worse than it helps.
+  parentId String?
+  parent   TaskUpdate?  @relation("TaskUpdateThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  TaskUpdate[] @relation("TaskUpdateThread")
+
+  /// Progress reported alongside this update, if any. Kept on the update as well as
+  /// on the task, so the history of "it was 40% here" survives later changes.
+  progressPercent Int?
+
+  attachments    Attachment[]
+  tagLinks       TaskTagLink[]
+  mentions       TaskMention[]
+  /// Checklist items introduced by this update.
+  checklistItems TaskChecklistItem[]
+
+  editedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+  @@index([parentId])
+}
+
+/// An @mention of a person in an update.
+///
+/// Stored rather than re-parsed on read: it makes "everything I was mentioned in" an
+/// indexed query instead of a full scan, and it pins the mention to the person who
+/// was meant even if they later change their display name.
+model TaskMention {
+  id       String     @id @default(cuid())
+  updateId String
+  update   TaskUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("TaskMentioned", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([updateId, userId])
+  @@index([userId])
+}
+
+/// One entry in a task timeline.
+///
+/// Distinct from `AuditLog`, which is an org-wide security record an admin reads.
+/// This is the story of a single task, shown to everyone working on it — so it holds
+/// human-readable before/after detail that the audit log has no business carrying.
+model TaskActivity {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("TaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// See TASK_ACTIVITY_KINDS in enums.ts — created, assigned, status_changed, …
+  kind String
+
+  /// JSON detail: the from/to of a status change, the filename added, and so on.
+  meta String?
+  /// Optional note the actor attached to the action itself.
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([kind])
+}
+
+/// Tag vocabulary, shared across the workspace so filters stay consistent.
+model TaskTag {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  /// Token name from the chart palette (see CHART_SERIES).
+  color String @default("indigo")
+
+  links TaskTagLink[]
+
+  createdAt DateTime @default(now())
+}
+
+/// Tags apply to a task *or* to a single update — section 6 of the brief asks for
+/// both, and one join table with two nullable parents keeps the tag vocabulary
+/// single rather than splitting it in two.
+model TaskTagLink {
+  id    String  @id @default(cuid())
+  tagId String
+  tag   TaskTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  updateId String?
+  update   TaskUpdate? @relation(fields: [updateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tagId, taskId])
+  @@unique([tagId, updateId])
+  @@index([taskId])
+  @@index([updateId])
+}
+
+/// A tickable item on a task.
+///
+/// Lives on the task rather than inside the update that created it, so it stays
+/// tickable afterwards — a checklist buried in update #2 that nobody can complete
+/// from update #7 would be decoration.
+model TaskChecklistItem {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  label String
+  done  Boolean @default(false)
+
+  doneAt   DateTime?
+  doneById String?
+  doneBy   User?     @relation("ChecklistCompleter", fields: [doneById], references: [id], onDelete: SetNull)
+
+  /// Manual ordering within the list.
+  position Int @default(0)
+
+  /// The update that introduced it, where one did.
+  createdInUpdateId String?
+  createdInUpdate   TaskUpdate? @relation(fields: [createdInUpdateId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, position])
+}
+
+/// "This task cannot start until that one is done."
+model TaskDependency {
+  id String @id @default(cuid())
+
+  /// The task that must finish first.
+  blockerId String
+  blocker   Task   @relation("TaskBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  /// The task that waits.
+  dependentId String
+  dependent   Task   @relation("TaskDependent", fields: [dependentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, dependentId])
+  @@index([dependentId])
 }

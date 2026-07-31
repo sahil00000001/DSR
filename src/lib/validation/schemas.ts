@@ -8,6 +8,9 @@ import {
   LEAVE_TYPES,
   ROLES,
   SELF_REPORTABLE_ATTENDANCE,
+  TASK_PRIORITIES,
+  TASK_RECURRENCES,
+  TASK_STATUSES,
   USER_STATUSES,
 } from "@/lib/constants/enums";
 
@@ -499,3 +502,165 @@ export const expenseFilterSchema = z.object({
 });
 
 export type ExpenseFilterInput = z.infer<typeof expenseFilterSchema>;
+
+// ---------------------------------------------------------------------------
+//  Tasks
+// ---------------------------------------------------------------------------
+
+/**
+ * A comma-separated list of ids arriving from a multi-select.
+ *
+ * Distinct from `csvList` (which is for filters): this one is required to hold at
+ * least one entry, because a task with nobody on it is a note, not a task.
+ */
+const idList = z
+  .string()
+  .transform((value) => value.split(",").map((entry) => entry.trim()).filter(Boolean))
+  .pipe(z.array(z.string().min(1)));
+
+export const taskSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(4, "Give the task a short title, e.g. “Re-cut the feed-dog cam”.")
+      .max(180, "Keep the title under 180 characters."),
+    description: z
+      .string()
+      .trim()
+      .min(10, "Explain what needs doing — the person picking this up wasn't in the room.")
+      .max(20_000, "That description is too long. Attach a document instead."),
+    priority: z.enum(TASK_PRIORITIES),
+    status: z.enum(TASK_STATUSES),
+    categoryId: optionalText(64),
+    /** At least one person. Multiple is allowed — section 1 asks for it explicitly. */
+    assigneeIds: idList.refine((ids) => ids.length > 0, "Assign this to at least one person."),
+    dueOn: dayKey.optional().or(z.literal("").transform(() => undefined)),
+    /** `HH:MM`, paired with `dueOn` to form an exact deadline. */
+    deadlineTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a 24-hour time like 14:30.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    /** Whole hours or a decimal like 2.5 — converted to minutes in the action. */
+    estimateHours: z
+      .string()
+      .regex(/^\d{1,3}(\.\d{1,2})?$/, "Enter hours as a number, e.g. 2 or 2.5.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    tagIds: csvList,
+    dependsOnIds: csvList,
+    recurrence: z.enum(TASK_RECURRENCES).default("NONE"),
+    recurrenceEvery: z.coerce.number().int().min(1).max(52).default(1),
+    recurrenceUntil: dayKey.optional().or(z.literal("").transform(() => undefined)),
+    blockedReason: optionalText(500),
+  })
+  .refine((value) => value.status !== "BLOCKED" || Boolean(value.blockedReason), {
+    error: "Say what is blocking it, so somebody can clear it.",
+    path: ["blockedReason"],
+  })
+  .refine((value) => value.recurrence === "NONE" || Boolean(value.dueOn), {
+    // Without a first due date there is no anchor to repeat from.
+    error: "A repeating task needs a first due date.",
+    path: ["dueOn"],
+  })
+  .refine((value) => !value.deadlineTime || Boolean(value.dueOn), {
+    error: "Pick a date to go with that time.",
+    path: ["dueOn"],
+  });
+
+export const taskUpdateSchema = z.object({
+  taskId: z.string().min(1),
+  /** Threading: present when this is a reply. */
+  parentId: optionalText(64),
+  body: z
+    .string()
+    .trim()
+    .min(2, "Write something before posting.")
+    .max(10_000, "That update is too long — attach a document instead."),
+  /** Blank means "leave progress as it is". */
+  progressPercent: z
+    .string()
+    .regex(/^(100|[1-9]?\d)$/, "Progress is a whole number from 0 to 100.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  tagIds: csvList,
+  /** One per line, from the composer's checklist field. */
+  checklist: optionalText(4000),
+});
+
+export const taskStatusSchema = z
+  .object({
+    taskId: z.string().min(1),
+    status: z.enum(TASK_STATUSES),
+    blockedReason: optionalText(500),
+  })
+  .refine((value) => value.status !== "BLOCKED" || Boolean(value.blockedReason), {
+    error: "Say what is blocking it.",
+    path: ["blockedReason"],
+  });
+
+export const taskProgressSchema = z.object({
+  taskId: z.string().min(1),
+  progressPercent: z.coerce.number().int().min(0).max(100),
+});
+
+export const taskAssignSchema = z.object({
+  taskId: z.string().min(1),
+  assigneeIds: idList.refine((ids) => ids.length > 0, "A task needs at least one assignee."),
+});
+
+export const taskChecklistSchema = z.object({
+  taskId: z.string().min(1),
+  itemId: z.string().min(1),
+  done: z.enum(["true", "false"]).transform((value) => value === "true"),
+});
+
+export const taskCategorySchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Give the category a name.")
+    .max(60, "Keep it under 60 characters."),
+  description: optionalText(300),
+  color: z.enum(DEPARTMENT_COLORS),
+});
+
+export const taskTagSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Give the tag a name.")
+    .max(40, "Keep tags short — under 40 characters."),
+  color: z.enum(DEPARTMENT_COLORS),
+});
+
+export const taskFilterSchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: csvList,
+  priority: csvList,
+  assignee: csvList,
+  createdBy: csvList,
+  category: csvList,
+  tag: csvList,
+  department: csvList,
+  from: dayKey.optional(),
+  to: dayKey.optional(),
+  /** Named shortcuts the UI offers: overdue, due-today, due-week, unassigned, mine. */
+  scope: z
+    .enum(["all", "mine", "overdue", "due-today", "due-week", "mentioned", "unassigned"])
+    .optional(),
+  sort: z
+    .enum(["due-asc", "due-desc", "priority-desc", "created-desc", "updated-desc", "title-asc"])
+    .optional(),
+  view: z.enum(["list", "board", "calendar", "timeline"]).optional(),
+  /** `YYYY-MM`, for the calendar view. */
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
+  page: z.coerce.number().int().min(1).max(10_000).optional(),
+  size: z.coerce.number().int().min(10).max(200).optional(),
+});
+
+export type TaskFilterInput = z.infer<typeof taskFilterSchema>;

@@ -44,6 +44,18 @@ export type AuditAction =
   | "expense.reject"
   | "expense.reimburse"
   | "expense.cancel"
+  | "task.create"
+  | "task.update"
+  | "task.assign"
+  | "task.status"
+  | "task.delete"
+  | "task.comment"
+  | "task.attach"
+  | "task.complete"
+  | "task.reopen"
+  | "task.spawn"
+  | "task.category"
+  | "task.tag"
   | "employee.create"
   | "employee.update"
   | "employee.disable"
@@ -233,6 +245,18 @@ export function describeAudit(entry: AuditEntry): string {
     "expense.reject": "declined an expense claim",
     "expense.reimburse": "marked an expense claim reimbursed",
     "expense.cancel": "withdrew an expense claim",
+    "task.create": "created a task",
+    "task.update": "edited a task",
+    "task.assign": "changed who a task is assigned to",
+    "task.status": "changed a task status",
+    "task.delete": "deleted a task",
+    "task.comment": "posted a task update",
+    "task.attach": "attached a file to a task",
+    "task.complete": "completed a task",
+    "task.reopen": "reopened a task",
+    "task.spawn": "created a repeating task occurrence",
+    "task.category": "changed the task categories",
+    "task.tag": "changed the task tags",
     "employee.create": "added an employee",
     "employee.update": "updated an employee",
     "employee.disable": "disabled an employee",
