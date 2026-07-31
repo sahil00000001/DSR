@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -32,10 +32,12 @@ import { formatHours } from "@/lib/utils/format";
 /**
  * "Your day" card — the first thing an employee sees.
  *
- * Collapses the two daily obligations into one place with a single tap each. The
- * attendance buttons post a server action and then `router.refresh()`, so the
- * card, the nav badges and the dashboard tiles all reconcile from the server
- * rather than from optimistic local state that could drift.
+ * Collapses the two daily obligations into one place with a single tap each.
+ *
+ * Attendance is optimistic for immediate feedback, then reconciled: the server
+ * action runs and `router.refresh()` re-renders the card, the nav badges and the
+ * dashboard tiles from authoritative data. The optimistic value only ever covers
+ * the gap — it is never the source of truth, so it cannot drift.
  */
 
 const ATTENDANCE_OPTIONS: Array<{
@@ -70,16 +72,33 @@ export function TodayCard({
   const router = useRouter();
   const toast = useToast();
   const [isPending, startTransition] = useTransition();
-  const [marking, setMarking] = useState<AttendanceStatus | null>(null);
 
-  const isMarked = attendance !== null && !attendance.inferred;
+  /**
+   * Optimistic attendance.
+   *
+   * Marking used to wait for the server action *and* a `router.refresh()` before
+   * the button state changed — roughly a second of nothing happening after a
+   * click, on a control people press once a day and expect to be instant.
+   *
+   * `useOptimistic` paints the new state immediately. React discards the optimistic
+   * value automatically when the transition settles, at which point the refreshed
+   * server props are authoritative — so a rejected write (an admin override on that
+   * day, for instance) visibly snaps back rather than lying.
+   */
+  const [optimistic, setOptimistic] = useOptimistic(
+    attendance,
+    (_current, next: AttendanceStatus) => ({ status: next, inferred: false }),
+  );
+
+  const isMarked = optimistic !== null && !optimistic.inferred;
   const reportDone = dsr !== null && dsr.status !== "DRAFT";
 
   const mark = (status: AttendanceStatus) => {
-    setMarking(status);
     startTransition(async () => {
+      // Must be inside the transition, or React warns and drops the update.
+      setOptimistic(status);
+
       const result = await quickMarkTodayAction(status);
-      setMarking(null);
       if (result.ok) {
         toast.success(result.message ?? "Attendance recorded");
         router.refresh();
@@ -191,7 +210,7 @@ export function TodayCard({
             <div className="min-w-0">
               <p className="text-[13.5px] font-medium text-fg">
                 {isMarked
-                  ? `Marked ${ATTENDANCE_STATUS_LABEL[attendance.status].toLowerCase()}`
+                  ? `Marked ${ATTENDANCE_STATUS_LABEL[optimistic.status].toLowerCase()}`
                   : "Attendance"}
               </p>
               <p className="mt-0.5 text-[12.5px] text-fg-muted">
@@ -208,14 +227,14 @@ export function TodayCard({
             <div className="flex flex-wrap gap-1.5">
               {ATTENDANCE_OPTIONS.map((option) => {
                 const Icon = option.icon;
-                const active = isMarked && attendance.status === option.status;
+                const active = isMarked && optimistic.status === option.status;
                 return (
                   <Button
                     key={option.status}
                     variant={active ? "primary" : "secondary"}
                     size="sm"
                     onClick={() => mark(option.status)}
-                    loading={isPending && marking === option.status}
+                    loading={isPending && active}
                     disabled={isPending}
                     aria-pressed={active}
                   >

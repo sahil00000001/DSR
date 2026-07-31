@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import type { Actor } from "@/lib/auth/rbac";
 import { percentage } from "@/lib/utils/format";
@@ -62,7 +63,14 @@ export interface DashboardData {
   weekRange: DayRange;
 }
 
-export async function getDashboardData(actor: Actor): Promise<DashboardData> {
+/**
+ * Wrapped in React's cache() because the dashboard now renders in independent
+ * Suspense boundaries, and several of them need this same payload. Without it each
+ * boundary would re-run the whole aggregation — roughly 25 queries apiece.
+ */
+export const getDashboardData = cache(async function getDashboardData(
+  actor: Actor,
+): Promise<DashboardData> {
   const now = today();
   const thisWeek: DayRange = { start: startOfWeek(now), end: endOfWeek(now) };
   const lastWeek: DayRange = { start: subDays(thisWeek.start, 7), end: subDays(thisWeek.start, 1) };
@@ -142,7 +150,7 @@ export async function getDashboardData(actor: Actor): Promise<DashboardData> {
     recentActivity,
     weekRange: thisWeek,
   };
-}
+});
 
 async function sumHours(range: DayRange, actor: Actor): Promise<number> {
   const result = await prisma.dailyStatusReport.aggregate({
