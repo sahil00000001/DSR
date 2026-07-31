@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useField } from "@/components/ui/field";
@@ -87,12 +87,31 @@ export function Textarea({
   rows = 4,
   id,
   onChange,
+  ref: externalRef,
   "aria-invalid": ariaInvalid,
   "aria-describedby": describedBy,
   ...props
 }: TextareaProps) {
   const field = useField();
   const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  /**
+   * A caller's `ref` is merged rather than allowed to replace the internal one.
+   *
+   * `TextareaProps` advertises ref support, but the props spread lands after
+   * `ref={ref}` in the JSX below — so an external ref used to win outright and
+   * autosize silently stopped working, because the internal ref stayed null. The
+   * Markdown editor needs the node to manipulate selections, and it also wants
+   * autosize; both have to work.
+   */
+  const attachRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      ref.current = node;
+      if (typeof externalRef === "function") externalRef(node);
+      else if (externalRef) externalRef.current = node;
+    },
+    [externalRef],
+  );
 
   // Resize on mount and whenever the value changes from outside (e.g. a draft
   // restored from localStorage), not just on keystrokes.
@@ -107,7 +126,7 @@ export function Textarea({
 
   return (
     <textarea
-      ref={ref}
+      ref={attachRef}
       id={id ?? field?.id}
       rows={rows}
       aria-invalid={ariaInvalid ?? field?.invalid ?? undefined}

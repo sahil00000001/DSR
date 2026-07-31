@@ -29,6 +29,7 @@ import {
 } from "@/lib/constants/enums";
 import { formatDayLong, parseDayKey, today, toDayKey } from "@/lib/utils/date";
 import { slugify } from "@/lib/utils/format";
+import { nextOccurrence } from "@/lib/utils/recurrence";
 import { nextTaskNumber } from "@/lib/services/tasks";
 import { deleteTaskFile, uploadTaskFile } from "@/lib/storage/supabase-storage";
 import { recordAudit } from "@/lib/services/audit";
@@ -1357,29 +1358,6 @@ export async function createTaskTagAction(_prev: FormState, formData: FormData):
 // ---------------------------------------------------------------------------
 //  Recurrence
 // ---------------------------------------------------------------------------
-
-/** The next occurrence date for a repeating task. */
-export function nextOccurrence(from: Date, recurrence: TaskRecurrence, every: number): Date | null {
-  const step = Math.max(1, every);
-
-  switch (recurrence) {
-    case "DAILY":
-      return new Date(from.getTime() + step * 86_400_000);
-    case "WEEKLY":
-      return new Date(from.getTime() + step * 7 * 86_400_000);
-    case "MONTHLY": {
-      // Calendar months, clamped: the 31st of a 30-day month lands on the 30th
-      // rather than skipping into the next month.
-      const year = from.getUTCFullYear();
-      const month = from.getUTCMonth() + step;
-      const targetDay = from.getUTCDate();
-      const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-      return new Date(Date.UTC(year, month, Math.min(targetDay, lastDay)));
-    }
-    default:
-      return null;
-  }
-}
 
 /**
  * Spawns any due occurrences of repeating tasks. Called by the cron.
