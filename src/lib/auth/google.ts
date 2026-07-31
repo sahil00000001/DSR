@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { env, googleAllowedDomains, isGoogleAuthEnabled } from "@/lib/env";
 import { errors } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { brandCookie } from "@/lib/constants/brand";
 
 /**
  * Google OAuth 2.0 (authorisation code flow).
@@ -22,8 +23,8 @@ import { logger } from "@/lib/logger";
  *     active employee, so OAuth can't be used to self-provision access.
  */
 
-export const OAUTH_STATE_COOKIE = "cadence_oauth_state";
-export const OAUTH_NONCE_COOKIE = "cadence_oauth_nonce";
+export const OAUTH_STATE_COOKIE = brandCookie("oauth_state");
+export const OAUTH_NONCE_COOKIE = brandCookie("oauth_nonce");
 /** The window a user has to complete the Google screen. */
 export const OAUTH_TTL_SECONDS = 600;
 

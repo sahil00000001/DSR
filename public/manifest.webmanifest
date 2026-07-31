@@ -1,7 +1,7 @@
 {
-  "name": "Cadence — Team Operations",
-  "short_name": "Cadence",
-  "description": "Daily status reports, attendance, leave and analytics for your team.",
+  "name": "Pooja Machines — Team Operations",
+  "short_name": "Pooja",
+  "description": "Daily status reports, attendance, leave and expense claims for Pooja Machines Private Limited.",
   "id": "/",
   "start_url": "/dashboard",
   "scope": "/",

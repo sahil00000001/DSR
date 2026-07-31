@@ -1,6 +1,7 @@
 import "server-only";
 import { env } from "@/lib/env";
 import { escapeHtml, markdownToEmailHtml, markdownToText } from "@/lib/utils/markdown";
+import { BRAND as COMPANY } from "@/lib/constants/brand";
 
 /**
  * Transactional email templates.
@@ -15,7 +16,7 @@ import { escapeHtml, markdownToEmailHtml, markdownToText } from "@/lib/utils/mar
  */
 
 const BRAND = {
-  name: "Cadence",
+  name: COMPANY.name,
   accent: "#4f46e5",
   accentSoft: "#eef0ff",
   ink: "#0f1115",
@@ -526,7 +527,7 @@ export function announcementEmail({
           authorName,
         )}</p>`,
         markdownToEmailHtml(body),
-        button("Open in Cadence", url),
+        button(`Open in ${COMPANY.name}`, url),
       ].join(""),
     }),
     text: [title, `Posted by ${authorName}`, "", markdownToText(body), "", url].join("\n"),
@@ -581,6 +582,148 @@ export function dsrReviewedEmail({
       comment ? `\nComment: ${comment}` : "",
       "",
       url,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+//  Expense claims
+// ---------------------------------------------------------------------------
+
+export function expenseSubmittedEmail({
+  approverName,
+  claimantName,
+  claimNumber,
+  title,
+  amount,
+  category,
+  expenseDate,
+  reviewUrl,
+}: {
+  approverName: string;
+  claimantName: string;
+  claimNumber: string;
+  title: string;
+  amount: string;
+  category: string;
+  expenseDate: string;
+  reviewUrl: string;
+}): EmailContent {
+  return {
+    subject: `${claimNumber} — ${claimantName} claimed ${amount}`,
+    html: layout({
+      preheader: `${title} · ${category} · ${expenseDate}`,
+      heading: `${escapeHtml(claimantName)} filed an expense claim`,
+      body: [
+        paragraph(`Hi ${escapeHtml(approverName.split(" ")[0] ?? approverName)},`),
+        paragraph("An expense claim is waiting for your decision."),
+        detailRows([
+          ["Claim", escapeHtml(claimNumber)],
+          ["Claimed by", escapeHtml(claimantName)],
+          ["Amount", `<strong>${escapeHtml(amount)}</strong>`],
+          ["Category", escapeHtml(category)],
+          ["Spent on", escapeHtml(expenseDate)],
+        ]),
+        `<div style="margin:0 0 4px;font-family:${FONT};font-size:12px;font-weight:600;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.04em;">What it was for</div>`,
+        `<div style="padding:12px 14px;border-left:3px solid ${BRAND.border};background:${BRAND.canvas};border-radius:0 8px 8px 0;font-size:13.5px;">${escapeHtml(
+          title,
+        )}</div>`,
+        button("Review claim", reviewUrl),
+        paragraph(
+          `<span style="color:${BRAND.muted};font-size:13px;">Receipts are attached to the claim in the portal — they aren't emailed, since they can contain personal details.</span>`,
+        ),
+      ].join(""),
+    }),
+    text: [
+      `${claimantName} filed an expense claim.`,
+      "",
+      `Claim: ${claimNumber}`,
+      `Amount: ${amount}`,
+      `Category: ${category}`,
+      `Spent on: ${expenseDate}`,
+      `For: ${title}`,
+      "",
+      `Review: ${reviewUrl}`,
+    ].join("\n"),
+  };
+}
+
+export function expenseDecisionEmail({
+  claimantName,
+  deciderName,
+  approved,
+  claimNumber,
+  title,
+  amount,
+  category,
+  expenseDate,
+  note,
+  detailUrl,
+}: {
+  claimantName: string;
+  deciderName: string;
+  approved: boolean;
+  claimNumber: string;
+  title: string;
+  amount: string;
+  category: string;
+  expenseDate: string;
+  note?: string;
+  detailUrl: string;
+}): EmailContent {
+  const verdict = approved ? "approved" : "declined";
+
+  return {
+    subject: `${claimNumber} was ${verdict} — ${amount}`,
+    html: layout({
+      preheader: approved
+        ? `${amount} approved for payment.`
+        : `${amount} declined — see the reason.`,
+      heading: `Your claim was ${verdict}`,
+      body: [
+        paragraph(`Hi ${escapeHtml(claimantName.split(" ")[0] ?? claimantName)},`),
+        `<p style="margin:0 0 16px;">${statusPill(
+          approved ? "Approved" : "Declined",
+          approved ? "success" : "danger",
+        )}</p>`,
+        detailRows([
+          ["Claim", escapeHtml(claimNumber)],
+          ["Amount", `<strong>${escapeHtml(amount)}</strong>`],
+          ["Category", escapeHtml(category)],
+          ["Spent on", escapeHtml(expenseDate)],
+          ["Decided by", escapeHtml(deciderName)],
+        ]),
+        note
+          ? [
+              `<div style="margin:0 0 4px;font-family:${FONT};font-size:12px;font-weight:600;color:${BRAND.muted};text-transform:uppercase;letter-spacing:0.04em;">Note from ${escapeHtml(
+                deciderName.split(" ")[0] ?? deciderName,
+              )}</div>`,
+              `<div style="padding:12px 14px;border-left:3px solid ${BRAND.border};background:${BRAND.canvas};border-radius:0 8px 8px 0;font-size:13.5px;">${escapeHtml(
+                note,
+              )}</div>`,
+            ].join("")
+          : "",
+        paragraph(
+          approved
+            ? `<span style="color:${BRAND.muted};font-size:13px;">Finance will mark it reimbursed once the payment goes out.</span>`
+            : `<span style="color:${BRAND.muted};font-size:13px;">If the note explains something you can correct, file a fresh claim with the change.</span>`,
+        ),
+        button("View claim", detailUrl),
+      ].join(""),
+    }),
+    text: [
+      `Your claim ${claimNumber} was ${verdict}.`,
+      "",
+      `Amount: ${amount}`,
+      `Category: ${category}`,
+      `Spent on: ${expenseDate}`,
+      `For: ${title}`,
+      `Decided by: ${deciderName}`,
+      note ? `\nNote: ${note}` : "",
+      "",
+      detailUrl,
     ]
       .filter(Boolean)
       .join("\n"),

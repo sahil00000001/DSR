@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { isGoogleAuthEnabled, env } from "@/lib/env";
+import { BRAND } from "@/lib/constants/brand";
 import { LoginForm } from "@/app/(auth)/login/login-form";
 import { GoogleButton } from "@/app/(auth)/login/google-button";
 import { DemoCredentials } from "@/app/(auth)/login/demo-credentials";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to Cadence.",
+  description: `Sign in to ${BRAND.name}.`,
 };
 
 /** Human-readable copy for the `?error=` codes the OAuth callback can set. */
@@ -18,7 +19,7 @@ const OAUTH_ERRORS: Record<string, string> = {
   oauth_unverified: "That Google account's email address isn't verified.",
   oauth_domain: "That Google account isn't allowed to sign in to this workspace.",
   oauth_no_account:
-    "There's no Cadence account for that Google address. Ask your administrator to add you.",
+    `There's no ${BRAND.name} account for that Google address. Ask your administrator to add you.`,
   oauth_disabled: "That account has been disabled. Please contact your administrator.",
   session_expired: "Your session expired. Please sign in again.",
 };

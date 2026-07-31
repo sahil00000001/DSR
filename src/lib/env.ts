@@ -44,7 +44,7 @@ const schema = z.object({
   /**
    * Supabase project credentials.
    *
-   * Cadence talks to Postgres directly through Prisma and owns its own sessions,
+   * This app talks to Postgres directly through Prisma and owns its own sessions,
    * so none of these are required to run. They're validated here (rather than read
    * ad hoc) so adopting Supabase Storage for DSR attachments later is a
    * configuration change, not a refactor. `SUPABASE_SECRET_KEY` bypasses
@@ -100,7 +100,7 @@ const schema = z.object({
     .transform((v) => v !== "false"),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  EMAIL_FROM: z.string().default("Cadence <no-reply@cadence.local>"),
+  EMAIL_FROM: z.string().default("Pooja Machines <no-reply@poojamachines.co.in>"),
 
   CRON_SECRET: z.string().optional(),
 });
@@ -165,7 +165,7 @@ export const isSupabaseConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_SEC
  */
 if (isProduction && !/pooler|pgbouncer/.test(env.DATABASE_URL)) {
   console.warn(
-    "[cadence] DATABASE_URL is not a pooled connection. On serverless hosting, use the " +
+    "[pmpl] DATABASE_URL is not a pooled connection. On serverless hosting, use the " +
       "Supabase connection-pooler endpoint (port 6543) with ?pgbouncer=true&connection_limit=1.",
   );
 }

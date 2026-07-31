@@ -18,7 +18,7 @@ import { getCompletionByEmployee, getCompletionTrend } from "@/lib/services/dsr"
 import {
   getAttendanceBoard,
   getAttendanceTrend,
-  getTodaySnapshot,
+  type getTodaySnapshot,
   snapshotFromBoard,
   trendFromBoard,
 } from "@/lib/services/attendance";

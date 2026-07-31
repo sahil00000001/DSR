@@ -11,14 +11,20 @@ import { can } from "@/lib/auth/rbac";
 import { getDsrById } from "@/lib/services/dsr";
 import { formatDay, toDayKey } from "@/lib/utils/date";
 
+/**
+ * Authorised, because `generateMetadata` runs independently of the page component —
+ * a `notFound()` in the body does not stop the title being computed and sent.
+ * Both reads are `cache()`d per request, so the check is free.
+ */
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const report = await getDsrById(id);
+  const [user, report] = await Promise.all([requireUser(), getDsrById(id)]);
   if (!report) return { title: "Report not found" };
+  if (!can.viewDsr(user, { id: report.author.id })) return { title: "Report not found" };
   return { title: `${report.author.name} — ${formatDay(report.date)}` };
 }
 

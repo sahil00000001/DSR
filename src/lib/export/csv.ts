@@ -1,4 +1,5 @@
 import "server-only";
+import { BRAND } from "@/lib/constants/brand";
 
 /**
  * CSV generation (RFC 4180).
@@ -62,7 +63,7 @@ export function toCsv<T>(rows: readonly T[], columns: Array<CsvColumn<T>>): stri
 export function exportFilename(kind: string, extension: string, stamp = new Date()): string {
   const date = stamp.toISOString().slice(0, 10);
   const safe = kind.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
-  return `cadence-${safe}-${date}.${extension}`;
+  return `${BRAND.filePrefix}-${safe}-${date}.${extension}`;
 }
 
 /** Response headers that make a browser download rather than render the file. */

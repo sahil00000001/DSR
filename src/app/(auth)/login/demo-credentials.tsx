@@ -16,24 +16,24 @@ const ACCOUNTS = [
   {
     role: "Admin",
     tone: "accent" as const,
-    email: "aisha.khan@cadence.dev",
+    email: "anil.gupta@poojamachines.co.in",
     description: "Full access: people, approvals, analytics, audit log",
   },
   {
     role: "Manager",
     tone: "info" as const,
-    email: "rohan.mehta@cadence.dev",
+    email: "harpreet.singh@poojamachines.co.in",
     description: "Reviews reports and approves leave for their own team",
   },
   {
     role: "Employee",
     tone: "neutral" as const,
-    email: "diya.sharma@cadence.dev",
+    email: "ramesh.sahu@poojamachines.co.in",
     description: "Submits reports, attendance and leave requests",
   },
 ];
 
-const PASSWORD = "Cadence#2026";
+const PASSWORD = "Pooja@Machines26";
 
 export function DemoCredentials() {
   const [expanded, setExpanded] = useState(true);

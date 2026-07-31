@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   FileText,
   Plane,
+  Receipt,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -41,15 +42,17 @@ export default async function ReportsPage() {
   const monthKey = toDayKey(startOfMonth(now)).slice(0, 7);
   const trailing30 = lastNDays(30, now);
 
-  const [dsrCount, attendanceCount, leaveCount, employeeCount, departmentCount] = await Promise.all([
-    prisma.dailyStatusReport.count({
-      where: { date: { gte: trailing30.start, lte: trailing30.end } },
-    }),
-    prisma.attendance.count({ where: { date: { gte: startOfMonth(now) } } }),
-    prisma.leaveRequest.count(),
-    prisma.user.count({ where: { status: { not: "DISABLED" } } }),
-    prisma.department.count(),
-  ]);
+  const [dsrCount, attendanceCount, leaveCount, employeeCount, departmentCount, expenseCount] =
+    await Promise.all([
+      prisma.dailyStatusReport.count({
+        where: { date: { gte: trailing30.start, lte: trailing30.end } },
+      }),
+      prisma.attendance.count({ where: { date: { gte: startOfMonth(now) } } }),
+      prisma.leaveRequest.count(),
+      prisma.user.count({ where: { status: { not: "DISABLED" } } }),
+      prisma.department.count(),
+      prisma.expenseClaim.count({ where: { status: { not: "DRAFT" } } }),
+    ]);
 
   return (
     <>
@@ -107,6 +110,14 @@ export default async function ReportsPage() {
           description="Expected versus filed per person, adjusted for holidays and approved leave."
           meta="Derived — recomputed at download"
           rangeControl
+        />
+
+        <ReportCard
+          kind="expenses"
+          icon={<Receipt />}
+          title="Expense claims"
+          description="Every claim with its amount in rupees, category, decision and reimbursement date. Drafts are included only for their owner."
+          meta={`${formatNumber(expenseCount)} claims filed`}
         />
 
         <ReportCard

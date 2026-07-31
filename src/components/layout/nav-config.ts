@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Plane,
+  Receipt,
   ScrollText,
   Settings,
   UserCheck,
@@ -26,7 +27,12 @@ import type { Role } from "@/lib/constants/enums";
  */
 
 /** Keys for the live counts the shell resolves server-side. */
-export type BadgeKey = "pendingLeave" | "dsrToReview" | "openDsr" | "unreadNotifications";
+export type BadgeKey =
+  | "pendingLeave"
+  | "dsrToReview"
+  | "openDsr"
+  | "unreadNotifications"
+  | "expensesToDecide";
 
 export interface NavItem {
   href: string;
@@ -81,6 +87,13 @@ const SECTIONS: NavSection[] = [
         exact: true,
         keywords: ["holiday", "time off", "sick", "casual", "balance"],
       },
+      {
+        href: "/expenses",
+        label: "Expenses",
+        icon: Receipt,
+        exact: true,
+        keywords: ["claim", "reimburse", "bill", "receipt", "spend", "money", "travel"],
+      },
     ],
   },
   {
@@ -108,6 +121,14 @@ const SECTIONS: NavSection[] = [
         roles: MANAGEMENT,
         badge: "pendingLeave",
         keywords: ["approve", "reject", "pending"],
+      },
+      {
+        href: "/expenses/review",
+        label: "Expense review",
+        icon: Receipt,
+        roles: ADMIN_ONLY,
+        badge: "expensesToDecide",
+        keywords: ["approve claim", "reimburse", "payout", "decline"],
       },
       {
         href: "/employees",

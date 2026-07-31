@@ -27,7 +27,8 @@ const BANNED = new Set([
   "admin123",
   "iloveyou",
   "changeme",
-  "cadence123",
+  "pooja123",
+  "poojamachines",
 ]);
 
 const LABELS: Record<PasswordStrength["score"], PasswordStrength["label"]> = {

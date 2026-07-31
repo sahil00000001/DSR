@@ -38,6 +38,12 @@ export type AuditAction =
   | "leave.approve"
   | "leave.reject"
   | "leave.cancel"
+  | "expense.create"
+  | "expense.submit"
+  | "expense.approve"
+  | "expense.reject"
+  | "expense.reimburse"
+  | "expense.cancel"
   | "employee.create"
   | "employee.update"
   | "employee.disable"
@@ -221,6 +227,12 @@ export function describeAudit(entry: AuditEntry): string {
     "leave.approve": "approved a leave request",
     "leave.reject": "declined a leave request",
     "leave.cancel": "cancelled a leave request",
+    "expense.create": "filed an expense claim",
+    "expense.submit": "submitted an expense claim",
+    "expense.approve": "approved an expense claim",
+    "expense.reject": "declined an expense claim",
+    "expense.reimburse": "marked an expense claim reimbursed",
+    "expense.cancel": "withdrew an expense claim",
     "employee.create": "added an employee",
     "employee.update": "updated an employee",
     "employee.disable": "disabled an employee",

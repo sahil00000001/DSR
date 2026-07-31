@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 /**
- * Registers the service worker that makes Cadence installable and gives it an
+ * Registers the service worker that makes the portal installable and gives it an
  * offline shell.
  *
  * Registration is deliberately deferred until after `load`: a service worker

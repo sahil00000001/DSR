@@ -8,8 +8,11 @@ import {
   CheckCheck,
   ClipboardCheck,
   FileText,
+  IndianRupee,
   Megaphone,
+  MessageSquare,
   Plane,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
@@ -39,6 +42,11 @@ const ICONS: Partial<Record<NotificationType, typeof Bell>> = {
   DSR_REVIEWED: ClipboardCheck,
   DSR_FLAGGED: ClipboardCheck,
   ATTENDANCE_REMINDER: CalendarCheck,
+  EXPENSE_SUBMITTED: Receipt,
+  EXPENSE_APPROVED: Receipt,
+  EXPENSE_REJECTED: Receipt,
+  EXPENSE_REIMBURSED: IndianRupee,
+  EXPENSE_COMMENT: MessageSquare,
   ANNOUNCEMENT: Megaphone,
 };
 
@@ -47,6 +55,9 @@ const TONE: Partial<Record<NotificationType, string>> = {
   LEAVE_REJECTED: "text-danger",
   DSR_FLAGGED: "text-warning",
   DSR_REVIEWED: "text-success",
+  EXPENSE_APPROVED: "text-success",
+  EXPENSE_REJECTED: "text-danger",
+  EXPENSE_REIMBURSED: "text-success",
   ANNOUNCEMENT: "text-accent",
 };
 

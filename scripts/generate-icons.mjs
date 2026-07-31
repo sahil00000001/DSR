@@ -1,16 +1,25 @@
 /**
- * Generates the PWA icon set.
+ * Generates the brand mark and the PWA icon set.
  *
  * Android's install prompt requires PNG icons at 192px and 512px — an SVG alone
  * isn't enough — so rather than add an image-processing dependency (sharp is a
  * ~30 MB native build) this writes the PNGs directly. A PNG is a signature plus
  * three chunks, and Node's zlib does the compression.
  *
- * The mark matches `CadenceMark` in src/components/layout/brand.tsx: an indigo
- * rounded square with three ascending bars — the "rhythm" of a team reporting day
- * after day.
+ * ## The mark
+ *
+ * Pooja Machines builds sewing machines and fans, so the mark is a **three-blade
+ * impeller**: a hub with three swept blades. It reads as a fan at a glance and as
+ * rotating machinery generally, and — unlike a sewing-machine silhouette — it
+ * survives being drawn at 16px in a browser tab.
+ *
+ * The blade geometry is defined once, here, and emitted as *both* the rasterised
+ * PNGs and the SVG path used by `<PoojaMark>` in src/components/layout/brand.tsx.
+ * Hand-copying a path is how a logo ends up subtly different in the tab and the
+ * sidebar, so `--print-path` exists to regenerate it from this same source.
  *
  * Run: node scripts/generate-icons.mjs
+ *      node scripts/generate-icons.mjs --print-path
  */
 
 import { deflateSync } from "node:zlib";
@@ -76,10 +85,62 @@ function encodePng(width, height, pixels) {
   ]);
 }
 
-// --- Drawing ----------------------------------------------------------------
+// --- Blade geometry ---------------------------------------------------------
 
 const ACCENT = [79, 70, 229]; // #4f46e5 — matches --accent in light mode
 const WHITE = [255, 255, 255];
+
+/**
+ * Blade shape, in units of the tile's size so it scales exactly.
+ *
+ * `SWEEP` is what makes it read as *rotating* rather than as a flower: each blade's
+ * centreline turns as it travels outward. Blades also flare towards the tip, the
+ * way a real impeller does — constant-width blades look like a pinwheel.
+ */
+const BLADES = 3;
+const R_ROOT = 0.05; // blade root radius
+const R_TIP = 0.375; // blade tip radius
+const R_HUB = 0.085; // solid centre hub
+const SWEEP = 0.62; // radians the centreline turns from root to tip
+const W_ROOT = 0.17; // half-width at the root, radians
+const W_TIP = 0.42; // half-width at the tip, radians
+
+const BASE_ANGLES = Array.from(
+  { length: BLADES },
+  (_, index) => -Math.PI / 2 + (index * 2 * Math.PI) / BLADES,
+);
+
+/** Half-width at normalised radius `t`, eased so the flare isn't linear. */
+function halfWidth(t) {
+  return W_ROOT + (W_TIP - W_ROOT) * Math.pow(t, 0.75);
+}
+
+/** Signed distance (in tile units) from a point to the nearest blade, or the hub. */
+function markDistance(dx, dy) {
+  const r = Math.hypot(dx, dy);
+  if (r < 1e-6) return -R_HUB;
+
+  let best = r - R_HUB; // the hub itself
+  const theta = Math.atan2(dy, dx);
+
+  for (const base of BASE_ANGLES) {
+    // Where along the blade this radius sits.
+    const t = Math.min(1, Math.max(0, (r - R_ROOT) / (R_TIP - R_ROOT)));
+    const centreline = base + SWEEP * t;
+
+    // Smallest signed angular gap, wrapped to (-π, π].
+    const delta = Math.atan2(Math.sin(theta - centreline), Math.cos(theta - centreline));
+
+    // Angular overshoot converted to arc length, so the edge gets a 1px-smooth
+    // band at every radius rather than only near the tip.
+    const angular = (Math.abs(delta) - halfWidth(t)) * r;
+    const radial = Math.max(R_ROOT - r, r - R_TIP);
+
+    best = Math.min(best, Math.max(angular, radial));
+  }
+
+  return best;
+}
 
 /**
  * Signed distance to a rounded rectangle, used for anti-aliasing. Sampling the
@@ -104,19 +165,20 @@ function drawIcon(size, { maskable = false } = {}) {
   const tileHalf = tileSize / 2;
   const tileRadius = tileSize * (maskable ? 0.5 : 0.22);
 
-  // Three ascending bars, proportional to the tile.
-  const barWidth = tileSize * 0.1;
-  const barRadius = barWidth / 2;
-  const gap = tileSize * 0.19;
-  const baseline = centre + tileSize * 0.26;
-  const heights = [tileSize * 0.2, tileSize * 0.36, tileSize * 0.52];
-
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const px = x + 0.5;
       const py = y + 0.5;
 
-      const tileDistance = roundedRectDistance(px, py, centre, centre, tileHalf, tileHalf, tileRadius);
+      const tileDistance = roundedRectDistance(
+        px,
+        py,
+        centre,
+        centre,
+        tileHalf,
+        tileHalf,
+        tileRadius,
+      );
       // Smooth 1px band across the edge.
       const tileAlpha = Math.max(0, Math.min(1, 0.5 - tileDistance));
 
@@ -124,32 +186,19 @@ function drawIcon(size, { maskable = false } = {}) {
       let alpha = tileAlpha;
 
       if (tileAlpha > 0) {
-        for (let index = 0; index < heights.length; index += 1) {
-          const barHeight = heights[index];
-          const barCentreX = centre + (index - 1) * gap;
-          const barCentreY = baseline - barHeight / 2;
+        // Distance comes back in tile units; scale to pixels for the AA band.
+        const mark = markDistance((px - centre) / tileSize, (py - centre) / tileSize) * tileSize;
+        const markAlpha = Math.max(0, Math.min(1, 0.5 - mark));
 
-          const barDistance = roundedRectDistance(
-            px,
-            py,
-            barCentreX,
-            barCentreY,
-            barWidth / 2,
-            barHeight / 2,
-            barRadius,
-          );
-          const barAlpha = Math.max(0, Math.min(1, 0.5 - barDistance));
-
-          if (barAlpha > 0) {
-            // Composite the white bar over the accent tile.
-            const blend = barAlpha * tileAlpha;
-            colour = [
-              Math.round(ACCENT[0] * (1 - blend) + WHITE[0] * blend),
-              Math.round(ACCENT[1] * (1 - blend) + WHITE[1] * blend),
-              Math.round(ACCENT[2] * (1 - blend) + WHITE[2] * blend),
-            ];
-            alpha = Math.max(alpha, blend);
-          }
+        if (markAlpha > 0) {
+          // Composite the white mark over the accent tile.
+          const blend = markAlpha * tileAlpha;
+          colour = [
+            Math.round(ACCENT[0] * (1 - blend) + WHITE[0] * blend),
+            Math.round(ACCENT[1] * (1 - blend) + WHITE[1] * blend),
+            Math.round(ACCENT[2] * (1 - blend) + WHITE[2] * blend),
+          ];
+          alpha = Math.max(alpha, blend);
         }
       }
 
@@ -164,19 +213,83 @@ function drawIcon(size, { maskable = false } = {}) {
   return encodePng(size, size, pixels);
 }
 
-// --- SVG (crisp at any size, used as the browser favicon) -------------------
+// --- SVG path, from the same geometry ---------------------------------------
+
+const VIEWBOX = 32;
+const CENTRE = VIEWBOX / 2;
+
+/** Polar to viewBox coordinates. SVG's y grows downward, which is fine here. */
+function point(radius, angle) {
+  return [
+    CENTRE + radius * VIEWBOX * Math.cos(angle),
+    CENTRE + radius * VIEWBOX * Math.sin(angle),
+  ];
+}
+
+const round = (value) => Math.round(value * 100) / 100;
+
+/**
+ * Fits one cubic Bézier to a parametric curve from its endpoint tangents.
+ *
+ * The Hermite form is exact for a cubic and stays within a hundredth of a unit over
+ * these arcs — far below what a 32-unit viewBox can express — so each edge becomes
+ * one `C` command instead of a sampled polyline.
+ */
+function cubicThrough(at) {
+  const h = 1e-4;
+  const p0 = at(0);
+  const p1 = at(1);
+  const near0 = at(h);
+  const near1 = at(1 - h);
+
+  const tangent0 = [(near0[0] - p0[0]) / h, (near0[1] - p0[1]) / h];
+  const tangent1 = [(p1[0] - near1[0]) / h, (p1[1] - near1[1]) / h];
+
+  const c1 = [p0[0] + tangent0[0] / 3, p0[1] + tangent0[1] / 3];
+  const c2 = [p1[0] - tangent1[0] / 3, p1[1] - tangent1[1] / 3];
+
+  return `C${round(c1[0])} ${round(c1[1])} ${round(c2[0])} ${round(c2[1])} ${round(p1[0])} ${round(p1[1])}`;
+}
+
+function bladePath(base) {
+  const radiusAt = (t) => R_ROOT + t * (R_TIP - R_ROOT);
+  const centreAt = (t) => base + SWEEP * t;
+
+  const leading = (t) => point(radiusAt(t), centreAt(t) - halfWidth(t));
+  const trailing = (t) => point(radiusAt(1 - t), centreAt(1 - t) + halfWidth(1 - t));
+  // Across the tip, from the leading corner round to the trailing one.
+  const tip = (t) => point(R_TIP, centreAt(1) - halfWidth(1) + t * 2 * halfWidth(1));
+
+  const start = leading(0);
+
+  return [
+    `M${round(start[0])} ${round(start[1])}`,
+    cubicThrough(leading),
+    cubicThrough(tip),
+    cubicThrough(trailing),
+    "Z",
+  ].join("");
+}
+
+const MARK_PATH = BASE_ANGLES.map(bladePath).join(" ");
+const HUB_RADIUS = round(R_HUB * VIEWBOX);
 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <rect width="32" height="32" rx="7" fill="#4f46e5"/>
-  <g stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-    <path d="M10 21v-3"/>
-    <path d="M16 21v-8"/>
-    <path d="M22 21V9"/>
+  <g fill="#fff">
+    <path d="${MARK_PATH}"/>
+    <circle cx="${CENTRE}" cy="${CENTRE}" r="${HUB_RADIUS}"/>
   </g>
 </svg>
 `;
 
 // --- Write ------------------------------------------------------------------
+
+if (process.argv.includes("--print-path")) {
+  console.log(`hub radius: ${HUB_RADIUS}\n`);
+  console.log(MARK_PATH);
+  process.exit(0);
+}
 
 mkdirSync(OUT_DIR, { recursive: true });
 

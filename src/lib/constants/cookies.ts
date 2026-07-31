@@ -12,12 +12,13 @@
  * Constants shared across the server/client boundary belong in a plain module with
  * no directive, for the same reason the DTOs live in `src/types`.
  */
+import { brandCookie } from "@/lib/constants/brand";
 
 /** Sidebar collapsed/expanded. Read by the app layout, written by the sidebar. */
-export const SIDEBAR_COOKIE = "cadence_sidebar";
+export const SIDEBAR_COOKIE = brandCookie("sidebar");
 
 /** Light/dark/system. Read by the root layout, written by the theme provider. */
-export const THEME_COOKIE = "cadence_theme";
+export const THEME_COOKIE = brandCookie("theme");
 
 /** A year — long enough that a display preference feels permanent. */
 export const PREFERENCE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;

@@ -14,7 +14,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export const THEME_COOKIE = "cadence_theme";
+export const THEME_COOKIE = "pmpl_theme";
 /** One year — long enough that the preference feels permanent. */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -100,7 +100,7 @@ export function useTheme(): ThemeContextValue {
 export function ThemeScript() {
   const script = `
 (function(){try{
-  var m=document.cookie.match(/(?:^|; )cadence_theme=([^;]+)/);
+  var m=document.cookie.match(/(?:^|; )pmpl_theme=([^;]+)/);
   var t=m?decodeURIComponent(m[1]):"system";
   var d=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);
   if(d)document.documentElement.classList.add("dark");

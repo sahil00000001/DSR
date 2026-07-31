@@ -1,6 +1,6 @@
 # Deployment
 
-Deploying Cadence to Vercel with Supabase Postgres, Gmail SMTP, Google OAuth and
+Deploying the Pooja Machines portal to Vercel with Supabase Postgres, Gmail SMTP, Google OAuth and
 cron.
 
 ---
@@ -109,7 +109,7 @@ SMTP_PORT="465"
 SMTP_SECURE="true"
 SMTP_USER="you@gmail.com"
 SMTP_PASSWORD="<16-char app password, no spaces>"
-EMAIL_FROM="Cadence <you@gmail.com>"
+EMAIL_FROM="Pooja Machines <you@gmail.com>"
 ```
 
 1. Enable 2-Step Verification on the Google account.

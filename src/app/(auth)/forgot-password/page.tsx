@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { BRAND } from "@/lib/constants/brand";
 import { ForgotPasswordForm } from "@/app/(auth)/forgot-password/forgot-password-form";
 
 export const metadata: Metadata = { title: "Reset your password" };
@@ -21,7 +22,7 @@ export default function ForgotPasswordPage() {
           Reset your password
         </h1>
         <p className="mt-1.5 text-[13.5px] leading-5 text-fg-muted">
-          Enter the email address you use for Cadence and we&apos;ll send you a link to choose a new
+          Enter the email address you use for {BRAND.name} and we&apos;ll send you a link to choose a new
           password.
         </p>
       </div>

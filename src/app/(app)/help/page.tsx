@@ -4,12 +4,13 @@ import { Command, Keyboard, LifeBuoy, Mail, Shield } from "lucide-react";
 import { PageHeader, SectionHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Kbd } from "@/components/ui/badge";
+import { BRAND } from "@/lib/constants/brand";
 import { requireUser } from "@/lib/auth/session";
 import { ROLE_DESCRIPTION, ROLES, ROLE_LABEL } from "@/lib/constants/enums";
 
 export const metadata: Metadata = {
   title: "Help & shortcuts",
-  description: "Keyboard shortcuts and how Cadence works.",
+  description: `Keyboard shortcuts and how ${BRAND.name} works.`,
 };
 
 const SHORTCUTS = [
@@ -62,7 +63,7 @@ export default async function HelpPage() {
     <>
       <PageHeader
         title="Help & shortcuts"
-        description="How Cadence works, and how to move through it quickly."
+        description={`How ${BRAND.name} works, and how to move through it quickly.`}
       />
 
       <div className="max-w-3xl space-y-5">

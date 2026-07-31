@@ -17,34 +17,42 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
   const scopeToReports = user.role === "MANAGER";
   const canReview = isManagerOrAdmin(user);
 
-  const [unreadNotifications, dsrToReview, pendingLeave, openDsr] = await Promise.all([
-    prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+  const [unreadNotifications, dsrToReview, pendingLeave, openDsr, expensesToDecide] =
+    await Promise.all([
+      prisma.notification.count({ where: { userId: user.id, readAt: null } }),
 
-    canReview
-      ? prisma.dailyStatusReport.count({
-          where: {
-            status: "SUBMITTED",
-            // Never count your own report as something for you to review.
-            userId: { not: user.id },
-            ...(scopeToReports ? { user: { managerId: user.id } } : {}),
-          },
-        })
-      : Promise.resolve(0),
+      canReview
+        ? prisma.dailyStatusReport.count({
+            where: {
+              status: "SUBMITTED",
+              // Never count your own report as something for you to review.
+              userId: { not: user.id },
+              ...(scopeToReports ? { user: { managerId: user.id } } : {}),
+            },
+          })
+        : Promise.resolve(0),
 
-    canReview
-      ? prisma.leaveRequest.count({
-          where: {
-            status: "PENDING",
-            userId: { not: user.id },
-            ...(scopeToReports ? { user: { managerId: user.id } } : {}),
-          },
-        })
-      : Promise.resolve(0),
+      canReview
+        ? prisma.leaveRequest.count({
+            where: {
+              status: "PENDING",
+              userId: { not: user.id },
+              ...(scopeToReports ? { user: { managerId: user.id } } : {}),
+            },
+          })
+        : Promise.resolve(0),
 
-    countMissingReports(user.id),
-  ]);
+      countMissingReports(user.id),
 
-  return { unreadNotifications, dsrToReview, pendingLeave, openDsr };
+      // Expenses are admin-only, and never your own claim — same separation as leave.
+      user.role === "ADMIN"
+        ? prisma.expenseClaim.count({
+            where: { status: "SUBMITTED", userId: { not: user.id } },
+          })
+        : Promise.resolve(0),
+    ]);
+
+  return { unreadNotifications, dsrToReview, pendingLeave, openDsr, expensesToDecide };
 }
 
 /**

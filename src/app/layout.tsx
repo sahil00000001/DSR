@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { BRAND } from "@/lib/constants/brand";
 
 import { ThemeProvider, ThemeScript, THEME_COOKIE, type Theme } from "@/components/theme/theme-provider";
 import { AppProviders } from "@/app/providers";
@@ -10,12 +11,12 @@ import { AppProviders } from "@/app/providers";
 export const metadata: Metadata = {
   // A template means every page contributes its own name without repeating the brand.
   title: {
-    default: "Cadence — Team Operations",
-    template: "%s · Cadence",
+    default: `${BRAND.name} — Team Operations`,
+    template: `%s · ${BRAND.name}`,
   },
   description:
-    "Cadence is the operating rhythm for your team: daily status reports, attendance, leave and analytics in one place.",
-  applicationName: "Cadence",
+    BRAND.description,
+  applicationName: BRAND.name,
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Cadence",
+    title: BRAND.name,
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },

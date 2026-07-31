@@ -1,5 +1,7 @@
 "use client";
 
+import { BRAND } from "@/lib/constants/brand";
+
 /**
  * Last-resort boundary: catches failures in the root layout itself, where the
  * normal error page (and the design system with it) can't be relied on.
@@ -49,7 +51,7 @@ export default function GlobalError({
           </div>
 
           <h1 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 600, letterSpacing: "-0.015em" }}>
-            Cadence couldn&apos;t start
+            {BRAND.name} couldn&apos;t start
           </h1>
           <p style={{ margin: "0 0 20px", fontSize: 14, lineHeight: 1.6, color: "#5b6472" }}>
             An unexpected error stopped the application from loading. Reloading usually clears it.
@@ -75,7 +77,7 @@ export default function GlobalError({
               cursor: "pointer",
             }}
           >
-            Reload Cadence
+            Reload {BRAND.name}
           </button>
         </div>
       </body>

@@ -8,7 +8,7 @@
  * off-by-one-day bugs: a record written at midnight IST reads back as the
  * previous day for a viewer in New York, and vice versa.
  *
- * Cadence therefore normalises every calendar day to **UTC midnight** and only
+ * This app therefore normalises every calendar day to **UTC midnight** and only
  * ever reads those values back with UTC accessors. All arithmetic below is done
  * on UTC components so it is immune to DST transitions.
  *

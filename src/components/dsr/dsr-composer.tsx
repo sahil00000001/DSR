@@ -99,7 +99,7 @@ export function DsrComposer({
   };
 
   // Keyed by date so each day keeps its own recoverable draft.
-  const draft = usePersistentState<DraftShape>(`cadence:dsr-draft:${date}`, initial);
+  const draft = usePersistentState<DraftShape>(`pmpl:dsr-draft:${date}`, initial);
   const [form, setForm] = useState<DraftShape>(initial);
   const [preview, setPreview] = useState(false);
   const [restored, setRestored] = useState(false);
