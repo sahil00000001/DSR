@@ -14,7 +14,13 @@ import {
   type DayRange,
 } from "@/lib/utils/date";
 import { getCompletionByEmployee, getCompletionTrend } from "@/lib/services/dsr";
-import { getAttendanceTrend, getTodaySnapshot } from "@/lib/services/attendance";
+import {
+  getAttendanceBoard,
+  getAttendanceTrend,
+  getTodaySnapshot,
+  snapshotFromBoard,
+  trendFromBoard,
+} from "@/lib/services/attendance";
 import { getLeaveTrend } from "@/lib/services/leave";
 
 /**
@@ -62,8 +68,20 @@ export async function getDashboardData(actor: Actor): Promise<DashboardData> {
   const lastWeek: DayRange = { start: subDays(thisWeek.start, 7), end: subDays(thisWeek.start, 1) };
   const trailing30 = lastNDays(30, now);
 
+  /**
+   * One attendance board, two derived views.
+   *
+   * `getTodaySnapshot()` and `getAttendanceTrend()` each load their own board —
+   * 4 heavy queries apiece (every active user, all attendance rows, holidays and
+   * approved leave). Calling both here meant fetching overlapping ranges twice for
+   * 8 queries where 4 do. The 21-day trend window already contains today, so the
+   * board is loaded once and both views are derived from it in memory.
+   */
+  const attendanceBoard = await getAttendanceBoard(lastNDays(21, now), actor);
+  const snapshot = snapshotFromBoard(attendanceBoard, now);
+  const attendanceTrend = trendFromBoard(attendanceBoard);
+
   const [
-    snapshot,
     headcount,
     pendingLeave,
     submittedToday,
@@ -71,12 +89,10 @@ export async function getDashboardData(actor: Actor): Promise<DashboardData> {
     hoursThisWeek,
     hoursLastWeek,
     completionTrend,
-    attendanceTrend,
     departmentActivity,
     topContributors,
     recentActivity,
   ] = await Promise.all([
-    getTodaySnapshot(actor),
     prisma.user.count({ where: { status: "ACTIVE" } }),
     prisma.leaveRequest.count({
       where: {
@@ -98,7 +114,6 @@ export async function getDashboardData(actor: Actor): Promise<DashboardData> {
     sumHours(thisWeek, actor),
     sumHours(lastWeek, actor),
     getCompletionTrend(trailing30, actor),
-    getAttendanceTrend(lastNDays(21, now), actor),
     getDepartmentActivity(trailing30, actor),
     getTopContributors(trailing30, actor, 6),
     getRecentActivity(actor, 8),

@@ -1,9 +1,29 @@
 "use client";
 
-import type { TooltipProps } from "recharts";
 import { cn } from "@/lib/utils/cn";
 
-interface ChartTooltipProps extends TooltipProps<number, string> {
+/**
+ * Only the fields this component actually reads.
+ *
+ * Recharts 3 widened `TooltipProps` — `labelFormatter` now takes
+ * `(label: ReactNode, payload: Payload[])` and several props moved into context —
+ * so extending it no longer typechecks against a narrow implementation. Declaring
+ * the contract we depend on is both simpler and more honest: Recharts injects
+ * `active`, `payload` and `label` structurally at runtime, and nothing else here
+ * is used.
+ */
+interface TooltipEntry {
+  name?: string | number;
+  value?: number | string;
+  color?: string;
+  stroke?: string;
+  dataKey?: string | number;
+}
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: readonly TooltipEntry[];
+  label?: string | number;
   /** Appends a unit to each value, e.g. "h" or "%". */
   unit?: string;
   /** Renders a total row under the series list — for stacked/grouped charts. */

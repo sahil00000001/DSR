@@ -103,13 +103,13 @@ export const ATTENDANCE_STATUS_TONE = {
 } as const;
 
 /** Statuses an employee may self-report; the rest are system or admin driven. */
-export const SELF_REPORTABLE_ATTENDANCE: AttendanceStatus[] = ["PRESENT", "WFH", "HALF_DAY"];
+export const SELF_REPORTABLE_ATTENDANCE = ["PRESENT", "WFH", "HALF_DAY"] as const satisfies readonly AttendanceStatus[];
 
 /** Counts toward "worked" in analytics. */
-export const WORKING_ATTENDANCE: AttendanceStatus[] = ["PRESENT", "WFH", "HALF_DAY"];
+export const WORKING_ATTENDANCE = ["PRESENT", "WFH", "HALF_DAY"] as const satisfies readonly AttendanceStatus[];
 
 /** Days where no report is expected. */
-export const NON_WORKING_ATTENDANCE: AttendanceStatus[] = ["WEEKEND", "HOLIDAY", "LEAVE"];
+export const NON_WORKING_ATTENDANCE = ["WEEKEND", "HOLIDAY", "LEAVE"] as const satisfies readonly AttendanceStatus[];
 
 export const ATTENDANCE_SOURCES = ["SELF", "ADMIN", "SYSTEM"] as const;
 export type AttendanceSource = (typeof ATTENDANCE_SOURCES)[number];

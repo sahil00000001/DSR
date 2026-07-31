@@ -2,16 +2,20 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/jwt";
 
 /**
- * Edge middleware — the first authentication gate.
+ * Edge proxy — the first authentication gate.
+ *
+ * Next 16 renamed this convention from `middleware` to `proxy` (same runtime, same
+ * API; the old name still works but is deprecated). The name is a better
+ * description of what belongs here: cheap request-shaping, not business logic.
  *
  * Runs before any page renders and only verifies the session cookie's
- * *signature*. That's cheap and database-free, which is exactly what belongs at
- * the edge: it turns "anonymous user hits /dashboard" into a redirect instead of
- * a wasted render.
+ * *signature*. That's deliberately shallow — no database call — which is what
+ * belongs at the edge: it turns "anonymous user hits /dashboard" into a redirect
+ * instead of a wasted render.
  *
- * It is NOT the authorisation boundary. Role checks and session revocation live
- * in `getCurrentUser()` on the Node runtime, because they need the database.
- * A valid signature here means "plausibly signed in", nothing more.
+ * It is NOT the authorisation boundary. Role checks and session revocation live in
+ * `getCurrentUser()` on the Node runtime, because they need the database. A valid
+ * signature here means "plausibly signed in", nothing more.
  */
 
 /** Routes reachable without a session. */
@@ -32,7 +36,7 @@ function isMatch(pathname: string, paths: string[]): boolean {
   return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;

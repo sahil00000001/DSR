@@ -364,7 +364,12 @@ export async function getAttendanceBoard(
       departmentColor: user.department?.color ?? null,
       days: resolved,
       summary: {
-        worked: resolved.filter((day) => WORKING_ATTENDANCE.includes(day.status)).length,
+        // Widened for the membership test: WORKING_ATTENDANCE is a readonly tuple
+        // of three literals, so `.includes()` would otherwise reject any other
+        // AttendanceStatus as an argument rather than simply returning false.
+        worked: resolved.filter((day) =>
+          (WORKING_ATTENDANCE as readonly AttendanceStatus[]).includes(day.status),
+        ).length,
         absent: resolved.filter((day) => day.status === "ABSENT").length,
         leave: resolved.filter((day) => day.status === "LEAVE").length,
       },
@@ -383,10 +388,19 @@ export async function getAttendanceBoard(
   return { people: filtered, days, holidays: holidayKeys };
 }
 
-/** Today's roll-call for the dashboard. */
-export async function getTodaySnapshot(actor: Actor) {
-  const now = today();
-  const board = await getAttendanceBoard({ start: now, end: now }, actor);
+export type AttendanceBoard = Awaited<ReturnType<typeof getAttendanceBoard>>;
+
+/**
+ * Today's roll-call, derived from an already-loaded board.
+ *
+ * Split out from `getTodaySnapshot` so a caller that already holds a board
+ * covering today doesn't pay for a second one. The dashboard needs both this and
+ * a 21-day trend; loading the board twice cost 8 heavy queries where 4 suffice —
+ * every user, every attendance row, every holiday and all approved leave, fetched
+ * twice over overlapping ranges.
+ */
+export function snapshotFromBoard(board: AttendanceBoard, day: Date = today()) {
+  const key = toDayKey(day);
 
   const counts: Record<AttendanceStatus, number> = {
     PRESENT: 0,
@@ -401,29 +415,40 @@ export async function getTodaySnapshot(actor: Actor) {
   const notYetMarked: BoardPerson[] = [];
 
   for (const person of board.people) {
-    const day = person.days[0];
-    if (!day) continue;
-    counts[day.status] += 1;
+    // Select the requested day explicitly — a multi-day board can't assume [0].
+    const resolved = person.days.find((entry) => entry.key === key);
+    if (!resolved) continue;
+    counts[resolved.status] += 1;
     // "Absent" on today usually means "hasn't marked in yet" — worth separating.
-    if (day.status === "ABSENT" && day.inferred) notYetMarked.push(person);
+    if (resolved.status === "ABSENT" && resolved.inferred) notYetMarked.push(person);
   }
 
   return {
     counts,
     total: board.people.length,
     notYetMarked,
-    isNonWorkingDay: isWeekend(now) || board.holidays.has(toDayKey(now)),
+    isNonWorkingDay: isWeekend(day) || board.holidays.has(key),
     people: board.people,
   };
 }
 
-/** Daily composition series for the analytics trend chart. */
-export async function getAttendanceTrend(
-  range: DayRange,
-  actor: Actor,
-): Promise<Array<{ date: string; present: number; wfh: number; halfDay: number; leave: number; absent: number }>> {
-  const board = await getAttendanceBoard(range, actor);
+/** Today's roll-call, loading its own board. */
+export async function getTodaySnapshot(actor: Actor) {
+  const now = today();
+  return snapshotFromBoard(await getAttendanceBoard({ start: now, end: now }, actor), now);
+}
 
+export interface AttendanceTrendRow {
+  date: string;
+  present: number;
+  wfh: number;
+  halfDay: number;
+  leave: number;
+  absent: number;
+}
+
+/** Daily composition series, derived from an already-loaded board. */
+export function trendFromBoard(board: AttendanceBoard): AttendanceTrendRow[] {
   return board.days
     .map((day) => {
       const key = toDayKey(day);
@@ -444,4 +469,12 @@ export async function getAttendanceTrend(
     // Weekends would flatline every series and make the trend unreadable.
     .filter((row) => row.isWorkingDay)
     .map(({ isWorkingDay: _isWorkingDay, ...row }) => row);
+}
+
+/** Daily composition series, loading its own board. */
+export async function getAttendanceTrend(
+  range: DayRange,
+  actor: Actor,
+): Promise<AttendanceTrendRow[]> {
+  return trendFromBoard(await getAttendanceBoard(range, actor));
 }

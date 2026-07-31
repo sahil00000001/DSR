@@ -77,34 +77,35 @@ export function LeaveForm({ balances, holidayKeys, approverName }: LeaveFormProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  // Keep the end date from drifting behind the start date.
-  useEffect(() => {
-    if (end < start) setEnd(start);
-  }, [start, end]);
-
-  useEffect(() => {
-    if (halfDay && end !== start) setEnd(start);
-  }, [halfDay, start, end]);
+  /**
+   * The end date the request actually uses.
+   *
+   * Derived during render rather than corrected by an effect. The previous version
+   * wrote `end` back into state from two effects, which cost an extra render pass
+   * and left a frame where the form displayed a range it would never submit.
+   * A half day is always a single date; an end before the start is always clamped.
+   */
+  const effectiveEnd = halfDay || end < start ? start : end;
 
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
 
   const days = useMemo(() => {
     const from = tryParseDayKey(start);
-    const to = tryParseDayKey(end);
+    const to = tryParseDayKey(effectiveEnd);
     if (!from || !to || to < from) return 0;
 
     const workingDays = countWorkingDays({ start: from, end: to }, holidaySet);
     if (halfDay) return workingDays > 0 ? 0.5 : 0;
     return workingDays;
-  }, [start, end, halfDay, holidaySet]);
+  }, [start, effectiveEnd, halfDay, holidaySet]);
 
   const balance = balances.find((entry) => entry.type === type);
   const exceeds = balance ? days > balance.available : false;
   const range = useMemo(() => {
     const from = tryParseDayKey(start);
-    const to = tryParseDayKey(end);
+    const to = tryParseDayKey(effectiveEnd);
     return from && to && to >= from ? formatDayRange({ start: from, end: to }) : null;
-  }, [start, end]);
+  }, [start, effectiveEnd]);
 
   return (
     <form action={action} className="space-y-5" noValidate>
@@ -182,7 +183,7 @@ export function LeaveForm({ balances, holidayKeys, approverName }: LeaveFormProp
               <Input
                 name="endDate"
                 type="date"
-                value={end}
+                value={effectiveEnd}
                 min={start}
                 onChange={(event) => setEnd(event.target.value)}
                 disabled={halfDay}

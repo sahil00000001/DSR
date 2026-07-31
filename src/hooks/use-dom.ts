@@ -52,10 +52,18 @@ export function useOnClickOutside(
     handlerRef.current = handler;
   }, [handler]);
 
-  // Ref identity is stable across renders; the array wrapper is not, so we key
-  // the effect on `enabled` only and read refs at event time.
+  // The individual refs are stable across renders, but the array wrapping them is
+  // a fresh literal each time — so it's mirrored into a ref and read at event
+  // time, letting the listener effect key on `enabled` alone instead of
+  // re-subscribing on every render.
+  //
+  // Assigned in a layout effect rather than during render: mutating a ref while
+  // rendering is a side effect, and React may render without committing (a
+  // discarded concurrent render would leave a stale array behind).
   const refsRef = useRef(refs);
-  refsRef.current = refs;
+  useIsomorphicLayoutEffect(() => {
+    refsRef.current = refs;
+  });
 
   useEffect(() => {
     if (!enabled) return;

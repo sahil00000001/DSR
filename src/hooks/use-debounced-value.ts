@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Delays propagating a value until it has settled for `delay` ms. */
 export function useDebouncedValue<T>(value: T, delay = 200): T {
@@ -24,9 +24,13 @@ export function useDebouncedCallback<Args extends unknown[]>(
   delay = 300,
 ) {
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
-
   const timerRef = useRef<number | undefined>(undefined);
+
+  // Assigned in an effect, not during render: mutating a ref while rendering is
+  // a side effect, and React may render without committing.
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(
     () => () => {
@@ -35,10 +39,13 @@ export function useDebouncedCallback<Args extends unknown[]>(
     [],
   );
 
-  const run = useRef((...args: Args) => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => callbackRef.current(...args), delay);
-  }).current;
-
-  return run;
+  // useCallback rather than useRef().current — the previous version froze the
+  // first `delay` it ever saw, so changing it silently did nothing.
+  return useCallback(
+    (...args: Args) => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => callbackRef.current(...args), delay);
+    },
+    [delay],
+  );
 }

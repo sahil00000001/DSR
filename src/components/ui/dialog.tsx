@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -57,7 +57,8 @@ export function Dialog({
 }: DialogProps) {
   const mounted = useMounted();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const titleId = useRef(`dialog-title-${Math.random().toString(36).slice(2, 9)}`).current;
+  // useId() is stable across server and client renders; Math.random() was not.
+  const titleId = useId();
   const descriptionId = `${titleId}-description`;
 
   // Keep rendering briefly after `open` flips to false so the exit animation
@@ -168,7 +169,7 @@ export function Sheet({
 }: Omit<DialogProps, "size" | "bare"> & { side?: "left" | "right" | "bottom"; hideHeader?: boolean }) {
   const mounted = useMounted();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const titleId = useRef(`sheet-title-${Math.random().toString(36).slice(2, 9)}`).current;
+  const titleId = useId();
 
   const [present, setPresent] = useState(open);
   useEffect(() => {
