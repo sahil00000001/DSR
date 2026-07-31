@@ -114,19 +114,32 @@ The sign-in screen lists these while `NEXT_PUBLIC_DEMO_MODE="true"`. Set it to
 
 | | |
 | --- | --- |
-| Framework | Next.js 15 (App Router, Server Components, Server Actions) |
-| Language | TypeScript, `strict` |
+| Framework | Next.js 16 (App Router, Server Components, Server Actions) |
+| Language | TypeScript 6, `strict` |
 | Styling | Tailwind CSS v4 with a token-based design system |
-| Database | PostgreSQL via Prisma 6 |
+| Database | PostgreSQL via Prisma 7 on a `pg` driver adapter |
 | Auth | Hand-rolled sessions: `jose` JWT in an httpOnly cookie + a server-side session registry |
 | Passwords | Node's built-in `scrypt` (memory-hard, OWASP parameters) |
 | Charts | Recharts, with a CVD-validated palette |
 | Email | Nodemailer over Gmail SMTP |
 | Exports | Zero-dependency CSV and XLSX writers |
 
-**Runtime dependencies: 11.** No component library, no auth framework, no state
-manager, no spreadsheet library, no date library beyond what's needed. Each
-omission is a deliberate call documented at the point it was made.
+**Runtime dependencies: 16.** No component library, no auth framework, no state
+manager, no spreadsheet library. Each omission is a deliberate call documented at
+the point it was made.
+
+Three of those arrived with Prisma 7, which replaced the bundled Rust query engine
+with a driver adapter: `@prisma/adapter-pg`, `pg` and `dotenv`. Net effect on the
+deployment is a *reduction* — the engine binary is gone — and connection pooling is
+now configured explicitly in `src/lib/db/prisma.ts` rather than through
+query-string flags.
+
+### Versions deliberately held back
+
+| Package | Held at | Why |
+| --- | --- | --- |
+| TypeScript | 6.0.3 | `typescript-eslint` does not support TS 7 (the native Go compiler) — [typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940). TS 7 also requires `experimental.useTypeScriptCli` in Next. Linting matters more than compile speed. |
+| ESLint | 9.39 | `typescript-eslint` 8.65 declares `^10.0.0` in its peer range but fails at runtime with `scopeManager.addGlobals is not a function`. The declared support is optimistic. |
 
 ---
 

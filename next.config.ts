@@ -20,9 +20,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
-  // Keep the client bundle lean: these libraries are tree-shaken per-import.
   experimental: {
+    // Keep the client bundle lean: these libraries are tree-shaken per-import.
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+
   },
 
   images: {

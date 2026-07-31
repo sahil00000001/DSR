@@ -118,7 +118,7 @@ export const dsrSchema = z.object({
   nextSteps: optionalText(4000),
   notes: optionalText(4000),
   hoursWorked: z.coerce
-    .number({ invalid_type_error: "Hours must be a number." })
+    .number({ error: "Hours must be a number." })
     .min(0, "Hours can't be negative.")
     .max(24, "There are only 24 hours in a day.")
     // Quarter-hour granularity keeps totals tidy across a month.
@@ -151,8 +151,8 @@ const timeString = z
 
 export const selfAttendanceSchema = z.object({
   date: dayKey,
-  status: z.enum(SELF_REPORTABLE_ATTENDANCE as [string, ...string[]], {
-    errorMap: () => ({ message: "Choose how you're working today." }),
+  status: z.enum(SELF_REPORTABLE_ATTENDANCE, {
+    error: "Choose how you're working today.",
   }),
   checkIn: timeString,
   checkOut: timeString,
@@ -163,7 +163,7 @@ export const selfAttendanceSchema = z.object({
 export const attendanceOverrideSchema = z.object({
   userId: z.string().min(1),
   date: dayKey,
-  status: z.enum(ATTENDANCE_STATUSES as unknown as [string, ...string[]]),
+  status: z.enum(ATTENDANCE_STATUSES),
   note: optionalText(500),
 });
 
@@ -173,8 +173,8 @@ export const attendanceOverrideSchema = z.object({
 
 export const leaveRequestSchema = z
   .object({
-    type: z.enum(LEAVE_TYPES as unknown as [string, ...string[]], {
-      errorMap: () => ({ message: "Choose a leave type." }),
+    type: z.enum(LEAVE_TYPES, {
+      error: "Choose a leave type.",
     }),
     startDate: dayKey,
     endDate: dayKey,
@@ -229,8 +229,8 @@ export const employeeSchema = z.object({
     .trim()
     .regex(/^[A-Za-z0-9-]{3,20}$/, "Use letters, numbers and dashes only.")
     .transform((value) => value.toUpperCase()),
-  role: z.enum(ROLES as unknown as [string, ...string[]]),
-  status: z.enum(USER_STATUSES as unknown as [string, ...string[]]).default("ACTIVE"),
+  role: z.enum(ROLES),
+  status: z.enum(USER_STATUSES).default("ACTIVE"),
   designation: optionalText(120),
   phone,
   departmentId: optionalId,
@@ -260,7 +260,7 @@ export const preferencesSchema = z.object({
 export const departmentSchema = z.object({
   name: z.string().trim().min(2, "Enter a department name.").max(80),
   description: optionalText(400),
-  color: z.enum(DEPARTMENT_COLORS as unknown as [string, ...string[]]).default("indigo"),
+  color: z.enum(DEPARTMENT_COLORS).default("indigo"),
   headId: optionalId,
 });
 
@@ -291,7 +291,7 @@ export const announcementSchema = z
   .object({
     title: z.string().trim().min(4, "Give the announcement a title.").max(160),
     body: z.string().trim().min(10, "Add some detail.").max(8000),
-    audience: z.enum(ANNOUNCEMENT_AUDIENCES as unknown as [string, ...string[]]).default("ALL"),
+    audience: z.enum(ANNOUNCEMENT_AUDIENCES).default("ALL"),
     departmentId: optionalId,
     pinned: z.coerce.boolean().default(false),
   })
@@ -303,7 +303,7 @@ export const announcementSchema = z
 export const holidaySchema = z.object({
   name: z.string().trim().min(2, "Name the holiday.").max(120),
   date: dayKey,
-  type: z.enum(HOLIDAY_TYPES as unknown as [string, ...string[]]).default("PUBLIC"),
+  type: z.enum(HOLIDAY_TYPES).default("PUBLIC"),
   locationId: optionalId,
 });
 

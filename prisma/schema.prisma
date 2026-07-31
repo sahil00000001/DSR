@@ -22,15 +22,13 @@ generator client {
 datasource db {
   provider = "postgresql"
 
-  // Runtime connection. On Vercel this MUST be the Supabase *pooler* endpoint
-  // (port 6543, `?pgbouncer=true&connection_limit=1`): serverless functions open
-  // a connection per invocation and would exhaust a direct Postgres connection
-  // limit almost immediately.
-  url = env("DATABASE_URL")
-
-  // Migrations and introspection need a direct (non-pooled) connection —
-  // pgbouncer in transaction mode can't run the DDL session state Prisma uses.
-  directUrl = env("DIRECT_URL")
+  // Prisma 7 removed `url` / `directUrl` from the schema. Connection strings for
+  // the CLI (migrate, db push, studio) now live in `prisma.config.ts`, and the
+  // runtime client takes a driver adapter instead — see src/lib/db/prisma.ts.
+  //
+  // The practical upshot is a real improvement: pooling is handled by `pg`, which
+  // we configure directly, and the Rust query engine binary is gone from the
+  // deployment bundle.
 }
 
 // ---------------------------------------------------------------------------

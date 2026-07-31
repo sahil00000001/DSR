@@ -60,7 +60,24 @@ const schema = z.object({
     .string()
     .min(32, "AUTH_SECRET must be at least 32 characters — generate one with `openssl rand -hex 32`"),
 
-  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Canonical origin. Optional on Vercel — see `resolveAppUrl()` below, which
+   * derives it from the platform's own variables so a first deploy doesn't need
+   * you to know the URL in advance.
+   */
+  NEXT_PUBLIC_APP_URL: optionalUrl,
+
+  /**
+   * Injected by Vercel, not by us.
+   *
+   * `VERCEL_PROJECT_PRODUCTION_URL` is the *stable* production domain, which is
+   * what email links need. `VERCEL_URL` is deployment-specific (it changes every
+   * push) so it's only a fallback, useful for preview deployments.
+   *
+   * Both arrive without a protocol.
+   */
+  VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
+  VERCEL_URL: z.string().optional(),
 
   /**
    * Shows the seeded sign-in credentials on the login screen. Intended for
@@ -103,7 +120,32 @@ function parseEnv() {
   return parsed.data;
 }
 
-export const env = parseEnv();
+/**
+ * Resolves the canonical origin.
+ *
+ * An explicit `NEXT_PUBLIC_APP_URL` always wins — set it once you have a custom
+ * domain, because that's what should appear in emails. Otherwise Vercel's own
+ * variables are used, so a first deploy works with no configuration and preview
+ * deployments generate links that point at themselves rather than at production.
+ *
+ * Safe because every consumer is server-side (email templates, the OAuth redirect,
+ * the same-origin check) — nothing here is inlined into the client bundle, so
+ * resolving at runtime rather than at build time costs nothing.
+ */
+function resolveAppUrl(parsed: z.infer<typeof schema>): string {
+  if (parsed.NEXT_PUBLIC_APP_URL) return parsed.NEXT_PUBLIC_APP_URL;
+  if (parsed.VERCEL_PROJECT_PRODUCTION_URL) return `https://${parsed.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (parsed.VERCEL_URL) return `https://${parsed.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
+const parsedEnv = parseEnv();
+
+export const env = {
+  ...parsedEnv,
+  // Overwritten with the resolved value so all 13 call sites stay unchanged.
+  NEXT_PUBLIC_APP_URL: resolveAppUrl(parsedEnv),
+};
 
 /** Google OAuth is only offered when both halves of the credential are present. */
 export const isGoogleAuthEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
