@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { Sidebar, SIDEBAR_COOKIE } from "@/components/layout/sidebar";
+import { Sidebar } from "@/components/layout/sidebar";
+import { SIDEBAR_COOKIE } from "@/lib/constants/cookies";
 import { MobileTabBar } from "@/components/layout/mobile-nav";
 import { TopBar } from "@/components/layout/topbar";
 import { requireUser } from "@/lib/auth/session";
