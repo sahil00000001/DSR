@@ -161,6 +161,42 @@ running open — anyone who guessed the path could otherwise email the whole tea
 
 ---
 
+## 3. Function region — co-locate with the database
+
+`vercel.json` pins `"regions": ["bom1"]` (Mumbai) to match the Supabase project in
+`ap-south-1`. **This is the single largest performance factor in this app.**
+
+Vercel defaults to `iad1` (Washington DC). With the database in Mumbai, that
+configuration produced:
+
+```
+X-Vercel-Id: bom1::iad1::...     request entered at Mumbai, executed in Washington
+GET /api/health -> latencyMs: 187    for a single SELECT 1
+```
+
+187 ms for one trivial query is not query cost, it is 12,000 km of fibre. Pages here
+issue tens of queries, and while they are batched with `Promise.all`, the waves are
+serialised by the pool size — so the round trip is paid several times per page. That
+is what "the whole app feels slow" was.
+
+Co-located, the same query is ~2–5 ms.
+
+**If you move the database, change this too.** The two must agree; a mismatch is
+invisible in the code and shows up only as uniform slowness. Confirm with:
+
+```bash
+curl -sI https://<your-app>.vercel.app/api/health | grep -i x-vercel-id
+# want both segments equal, e.g. bom1::bom1::...
+```
+
+Region can also be set in Vercel → Settings → Functions → Function Region; the
+`vercel.json` value is authoritative when present.
+
+Available regions are listed at https://vercel.com/docs/regions — pick the one
+matching your Supabase project (Supabase → Settings → General → Region).
+
+---
+
 ## 3. Deploy
 
 ```bash
@@ -176,7 +212,11 @@ the Prisma client is generated with the deployment's own environment.
 
 ---
 
-## 4. Scheduled reminders
+## 4. Deploy
+
+_(previously section 3)_
+
+## 5. Scheduled reminders
 
 `vercel.json` registers one cron job:
 
