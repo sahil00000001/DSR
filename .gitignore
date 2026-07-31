@@ -1,0 +1,50 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# next
+.next
+out
+build
+next-env.d.ts
+
+# production
+dist
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env
+.env
+.env*.local
+
+# database (local SQLite dev database)
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# editor
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# uploads (local disk storage for attachments in dev)
+public/uploads/*
+!public/uploads/.gitkeep

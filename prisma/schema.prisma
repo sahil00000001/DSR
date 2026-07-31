@@ -1,0 +1,432 @@
+// ============================================================================
+//  Cadence — Prisma schema
+// ============================================================================
+//  PORTABILITY NOTE
+//  ----------------
+//  This schema deliberately avoids native database enums and JSON columns and
+//  uses `String` + application-level unions (see src/lib/constants/enums.ts)
+//  instead. Every such column is validated by Zod at each write boundary, so the
+//  guarantee a DB enum would give you is preserved — in the layer where the error
+//  message is actually useful to the person filling in the form.
+//
+//  The practical benefit: the schema runs unchanged on PostgreSQL (Supabase, in
+//  production) and on SQLite (`provider = "sqlite"`, `DATABASE_URL="file:./dev.db"`)
+//  for offline development, with no migration rewrite and no `@db.*` annotations
+//  to untangle.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+
+  // Runtime connection. On Vercel this MUST be the Supabase *pooler* endpoint
+  // (port 6543, `?pgbouncer=true&connection_limit=1`): serverless functions open
+  // a connection per invocation and would exhaust a direct Postgres connection
+  // limit almost immediately.
+  url = env("DATABASE_URL")
+
+  // Migrations and introspection need a direct (non-pooled) connection —
+  // pgbouncer in transaction mode can't run the DDL session state Prisma uses.
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+//  Organisation structure
+// ---------------------------------------------------------------------------
+
+model Department {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  /// Design-system colour token, e.g. "indigo" | "emerald" — drives chart + badge colours.
+  color       String  @default("indigo")
+
+  headId String?
+  head   User?   @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
+
+  teams         Team[]
+  members       User[]         @relation("UserDepartment")
+  announcements Announcement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([headId])
+}
+
+model Team {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  members User[] @relation("UserTeam")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+}
+
+model Location {
+  id       String @id @default(cuid())
+  name     String
+  code     String @unique
+  city     String
+  country  String
+  timezone String @default("Asia/Kolkata")
+
+  members  User[]    @relation("UserLocation")
+  holidays Holiday[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+//  People & identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String  @id @default(cuid())
+  /// Human-facing employee identifier, e.g. "CAD-014".
+  employeeCode String  @unique
+  name         String
+  email        String  @unique
+  /// Null for accounts that authenticate exclusively through Google OAuth.
+  passwordHash String?
+  phone        String?
+  avatarUrl    String?
+  designation  String?
+  bio          String?
+
+  /// Role — one of ADMIN | MANAGER | EMPLOYEE (see enums.ts).
+  role String @default("EMPLOYEE")
+  /// Status — one of ACTIVE | DISABLED | INVITED.
+  status String @default("ACTIVE")
+
+  departmentId String?
+  department   Department? @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+
+  teamId String?
+  team   Team?   @relation("UserTeam", fields: [teamId], references: [id], onDelete: SetNull)
+
+  locationId String?
+  location   Location? @relation("UserLocation", fields: [locationId], references: [id], onDelete: SetNull)
+
+  managerId String?
+  manager   User?   @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports   User[]  @relation("UserManager")
+
+  joinedAt        DateTime  @default(now())
+  dateOfBirth     DateTime?
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+
+  // Preferences
+  theme               String  @default("system")
+  notifyByEmail       Boolean @default(true)
+  dsrReminderOptOut   Boolean @default(false)
+
+  // Relations
+  headedDepartments Department[]        @relation("DepartmentHead")
+  reports_dsr       DailyStatusReport[] @relation("DsrAuthor")
+  reviewedDsrs      DailyStatusReport[] @relation("DsrReviewer")
+  attendance        Attendance[]
+  leaveRequests     LeaveRequest[]      @relation("LeaveRequester")
+  leaveDecisions    LeaveRequest[]      @relation("LeaveDecider")
+  leaveBalances     LeaveBalance[]
+  notifications     Notification[]      @relation("NotificationRecipient")
+  triggered         Notification[]      @relation("NotificationActor")
+  announcements     Announcement[]
+  auditLogs         AuditLog[]
+  sessions          Session[]
+  uploads           Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([status])
+  @@index([departmentId])
+  @@index([teamId])
+  @@index([locationId])
+  @@index([managerId])
+}
+
+/// Server-side session registry. The session cookie is a signed JWT whose `jti`
+/// points at a row here, which is what makes revocation ("sign out everywhere",
+/// disabling an employee) take effect immediately.
+model Session {
+  id        String   @id @default(cuid())
+  tokenId   String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  ip        String?
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Single-use tokens for password reset, e-mail verification and invitations.
+/// Only a SHA-256 hash of the token is stored.
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  tokenHash  String   @unique
+  /// PASSWORD_RESET | EMAIL_VERIFY | INVITE
+  type       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([identifier, type])
+}
+
+// ---------------------------------------------------------------------------
+//  Daily Status Reports
+// ---------------------------------------------------------------------------
+
+model DailyStatusReport {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("DsrAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Normalised to UTC midnight of the reporting day.
+  date DateTime
+
+  /// Markdown. Rendered by a sanitising renderer — never with dangerouslySetInnerHTML on raw input.
+  tasksCompleted String
+  blockers       String?
+  nextSteps      String?
+  notes          String?
+  hoursWorked    Float   @default(0)
+
+  /// DRAFT | SUBMITTED | REVIEWED | FLAGGED
+  status      String    @default("DRAFT")
+  submittedAt DateTime?
+
+  reviewedById  String?
+  reviewedBy    User?     @relation("DsrReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  reviewComment String?
+
+  attachments Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([status])
+  @@index([userId, status])
+  @@index([reviewedById])
+}
+
+// ---------------------------------------------------------------------------
+//  Attendance
+// ---------------------------------------------------------------------------
+
+model Attendance {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Normalised to UTC midnight.
+  date DateTime
+
+  /// PRESENT | ABSENT | LEAVE | HALF_DAY | WFH | HOLIDAY | WEEKEND
+  status        String
+  checkInAt     DateTime?
+  checkOutAt    DateTime?
+  workedMinutes Int       @default(0)
+  note          String?
+  /// SELF | ADMIN | SYSTEM
+  source        String    @default("SELF")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([status])
+  @@index([userId, date])
+}
+
+// ---------------------------------------------------------------------------
+//  Leave
+// ---------------------------------------------------------------------------
+
+model LeaveRequest {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("LeaveRequester", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// CASUAL | SICK | EARNED | UNPAID
+  type      String
+  startDate DateTime
+  endDate   DateTime
+  /// Working days consumed — supports halves (0.5).
+  days      Float
+  halfDay   Boolean  @default(false)
+  reason    String
+
+  /// PENDING | APPROVED | REJECTED | CANCELLED
+  status String @default("PENDING")
+
+  decidedById  String?
+  decidedBy    User?     @relation("LeaveDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?
+  decisionNote String?
+
+  attachments Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([startDate])
+  @@index([userId, status])
+}
+
+model LeaveBalance {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year Int
+  /// CASUAL | SICK | EARNED
+  type String
+
+  allocated Float @default(5)
+  used      Float @default(0)
+  /// Days locked by requests awaiting a decision.
+  pending   Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year, type])
+  @@index([userId, year])
+}
+
+// ---------------------------------------------------------------------------
+//  Communication
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// See NOTIFICATION_TYPES in enums.ts
+  type   String
+  title  String
+  body   String?
+  href   String?
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  title  String
+  body   String
+  pinned Boolean @default(false)
+
+  /// ALL | DEPARTMENT
+  audience     String  @default("ALL")
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([publishedAt])
+  @@index([authorId])
+}
+
+model Holiday {
+  id   String   @id @default(cuid())
+  name String
+  date DateTime
+  /// PUBLIC | OPTIONAL | COMPANY
+  type String   @default("PUBLIC")
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+// ---------------------------------------------------------------------------
+//  Files & audit
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id       String @id @default(cuid())
+  filename String
+  url      String
+  mimeType String
+  size     Int
+
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  dsrId String?
+  dsr   DailyStatusReport? @relation(fields: [dsrId], references: [id], onDelete: Cascade)
+
+  leaveRequestId String?
+  leaveRequest   LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([dsrId])
+  @@index([leaveRequestId])
+}
+
+model AuditLog {
+  id      String  @id @default(cuid())
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// e.g. "leave.approve", "employee.update", "auth.login"
+  action   String
+  entity   String
+  entityId String?
+  /// JSON-encoded payload (kept as text for provider portability).
+  meta     String?
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([entity, entityId])
+}

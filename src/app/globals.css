@@ -1,0 +1,652 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Cadence design system
+   --------------------------------------------------------------------------
+   One source of truth for colour, elevation, radius, motion and typography.
+   Components never hard-code a hex value — they consume the semantic tokens
+   below, which is what keeps light and dark mode coherent and lets the whole
+   product be re-skinned from this file alone.
+   ========================================================================== */
+
+/* Class-based dark mode so the user's choice can be persisted and rendered
+   server-side without a flash of the wrong theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* --------------------------------------------------------------------------
+   Semantic tokens — light (default)
+   -------------------------------------------------------------------------- */
+:root {
+  /* Surfaces: canvas sits a hair below pure white so raised cards read as
+     raised without needing a heavy shadow. */
+  --canvas: oklch(0.988 0.0015 264);
+  --surface: oklch(1 0 0);
+  --surface-muted: oklch(0.972 0.0025 264);
+  --surface-hover: oklch(0.963 0.004 264);
+  --surface-inset: oklch(0.978 0.002 264);
+
+  --border: oklch(0.922 0.004 264);
+  --border-strong: oklch(0.868 0.006 264);
+
+  --fg: oklch(0.185 0.012 264);
+  --fg-muted: oklch(0.505 0.014 264);
+  --fg-subtle: oklch(0.635 0.012 264);
+  --fg-inverted: oklch(0.99 0 0);
+
+  /* Brand accent — indigo. */
+  --accent: oklch(0.513 0.223 277);
+  --accent-hover: oklch(0.462 0.216 277);
+  --accent-active: oklch(0.421 0.203 277);
+  --accent-fg: oklch(1 0 0);
+  --accent-soft: oklch(0.955 0.021 277);
+  --accent-soft-hover: oklch(0.928 0.036 277);
+  --accent-ring: oklch(0.513 0.223 277 / 0.35);
+
+  /* Status */
+  --success: oklch(0.573 0.144 158);
+  --success-fg: oklch(1 0 0);
+  --success-soft: oklch(0.955 0.037 158);
+  --success-text: oklch(0.452 0.126 158);
+
+  --warning: oklch(0.734 0.161 68);
+  --warning-fg: oklch(0.24 0.05 68);
+  --warning-soft: oklch(0.964 0.048 88);
+  --warning-text: oklch(0.505 0.135 62);
+
+  --danger: oklch(0.593 0.216 17);
+  --danger-fg: oklch(1 0 0);
+  --danger-soft: oklch(0.961 0.026 17);
+  --danger-text: oklch(0.505 0.196 17);
+
+  --info: oklch(0.617 0.153 240);
+  --info-fg: oklch(1 0 0);
+  --info-soft: oklch(0.958 0.028 240);
+  --info-text: oklch(0.485 0.148 245);
+
+  /* Categorical scale — departments, charts, avatars.
+     ------------------------------------------------------------------------
+     Assignment order is FIXED and is not the order they're declared in here:
+     see CHART_SERIES in src/lib/charts/palette.ts. That order
+     (indigo → emerald → violet → amber → teal → orange → sky → rose) was
+     chosen by search to maximise the worst adjacent separation under
+     simulated protanopia/deuteranopia. Verified worst adjacent ΔE (OKLab×100):
+     15.1 light / 15.4 dark, against a target of 8.0.
+     Slots are assigned per entity and never cycled — a 9th series folds into
+     "Other" rather than reusing a hue. */
+  --cat-indigo: oklch(0.548 0.216 277);
+  --cat-emerald: oklch(0.598 0.142 160);
+  --cat-amber: oklch(0.742 0.158 72);
+  --cat-sky: oklch(0.638 0.148 234);
+  --cat-violet: oklch(0.588 0.222 305);
+  --cat-rose: oklch(0.628 0.203 12);
+  --cat-teal: oklch(0.628 0.115 195);
+  --cat-orange: oklch(0.684 0.185 44);
+
+  /* Sequential ramp — one hue, light→dark. Used for the attendance heatmap. */
+  --seq-1: oklch(0.955 0.021 277);
+  --seq-2: oklch(0.895 0.055 277);
+  --seq-3: oklch(0.815 0.098 277);
+  --seq-4: oklch(0.705 0.155 277);
+  --seq-5: oklch(0.598 0.205 277);
+  --seq-6: oklch(0.492 0.198 277);
+
+  /* Elevation — layered, low-opacity shadows read as light rather than grime. */
+  --shadow-xs: 0 1px 2px 0 oklch(0.2 0.02 264 / 0.05);
+  --shadow-sm:
+    0 1px 2px 0 oklch(0.2 0.02 264 / 0.05), 0 1px 3px 0 oklch(0.2 0.02 264 / 0.06);
+  --shadow-md:
+    0 1px 2px 0 oklch(0.2 0.02 264 / 0.04), 0 8px 16px -6px oklch(0.2 0.02 264 / 0.1);
+  --shadow-lg:
+    0 1px 3px 0 oklch(0.2 0.02 264 / 0.04), 0 14px 32px -10px oklch(0.2 0.02 264 / 0.14);
+  --shadow-pop:
+    0 2px 4px 0 oklch(0.2 0.02 264 / 0.04), 0 24px 56px -16px oklch(0.2 0.02 264 / 0.2);
+  --shadow-inner-top: inset 0 1px 0 0 oklch(1 0 0 / 0.6);
+
+  --glass-bg: oklch(1 0 0 / 0.72);
+  --glass-border: oklch(1 0 0 / 0.6);
+
+  --chart-grid: oklch(0.93 0.004 264);
+}
+
+/* --------------------------------------------------------------------------
+   Semantic tokens — dark
+   -------------------------------------------------------------------------- */
+.dark {
+  --canvas: oklch(0.155 0.008 265);
+  --surface: oklch(0.192 0.009 265);
+  --surface-muted: oklch(0.223 0.01 265);
+  --surface-hover: oklch(0.248 0.011 265);
+  --surface-inset: oklch(0.176 0.009 265);
+
+  --border: oklch(0.272 0.011 265);
+  --border-strong: oklch(0.338 0.013 265);
+
+  --fg: oklch(0.965 0.003 265);
+  --fg-muted: oklch(0.715 0.015 265);
+  --fg-subtle: oklch(0.578 0.016 265);
+  --fg-inverted: oklch(0.17 0.01 265);
+
+  --accent: oklch(0.638 0.196 277);
+  --accent-hover: oklch(0.685 0.19 277);
+  --accent-active: oklch(0.722 0.18 277);
+  --accent-fg: oklch(0.135 0.02 277);
+  --accent-soft: oklch(0.283 0.062 277);
+  --accent-soft-hover: oklch(0.325 0.078 277);
+  --accent-ring: oklch(0.638 0.196 277 / 0.45);
+
+  --success: oklch(0.688 0.148 158);
+  --success-fg: oklch(0.16 0.03 158);
+  --success-soft: oklch(0.288 0.058 158);
+  --success-text: oklch(0.792 0.128 158);
+
+  --warning: oklch(0.792 0.155 74);
+  --warning-fg: oklch(0.19 0.04 74);
+  --warning-soft: oklch(0.305 0.065 74);
+  --warning-text: oklch(0.848 0.128 82);
+
+  --danger: oklch(0.648 0.208 19);
+  --danger-fg: oklch(0.15 0.03 19);
+  --danger-soft: oklch(0.302 0.082 19);
+  --danger-text: oklch(0.788 0.148 19);
+
+  --info: oklch(0.688 0.148 238);
+  --info-fg: oklch(0.15 0.03 238);
+  --info-soft: oklch(0.292 0.068 238);
+  --info-text: oklch(0.808 0.108 238);
+
+  /* Dark is re-stepped from the same hues, not an inversion of the light set:
+     the dark lightness band is 0.48–0.67, and these values are what pass the
+     CVD + contrast checks against the dark chart surface. */
+  --cat-indigo: oklch(0.6 0.19 277);
+  --cat-emerald: oklch(0.62 0.14 160);
+  --cat-amber: oklch(0.66 0.15 76);
+  --cat-sky: oklch(0.63 0.14 234);
+  --cat-violet: oklch(0.61 0.2 305);
+  --cat-rose: oklch(0.62 0.18 14);
+  --cat-teal: oklch(0.64 0.11 195);
+  --cat-orange: oklch(0.65 0.165 46);
+
+  --seq-1: oklch(0.288 0.062 277);
+  --seq-2: oklch(0.362 0.092 277);
+  --seq-3: oklch(0.438 0.128 277);
+  --seq-4: oklch(0.522 0.165 277);
+  --seq-5: oklch(0.602 0.192 277);
+  --seq-6: oklch(0.678 0.172 277);
+
+  --shadow-xs: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.35), 0 1px 3px 0 oklch(0 0 0 / 0.3);
+  --shadow-md: 0 1px 2px 0 oklch(0 0 0 / 0.3), 0 8px 16px -6px oklch(0 0 0 / 0.45);
+  --shadow-lg: 0 1px 3px 0 oklch(0 0 0 / 0.3), 0 14px 32px -10px oklch(0 0 0 / 0.55);
+  --shadow-pop: 0 2px 4px 0 oklch(0 0 0 / 0.3), 0 24px 56px -16px oklch(0 0 0 / 0.65);
+  --shadow-inner-top: inset 0 1px 0 0 oklch(1 0 0 / 0.05);
+
+  --glass-bg: oklch(0.192 0.009 265 / 0.72);
+  --glass-border: oklch(1 0 0 / 0.07);
+
+  --chart-grid: oklch(0.268 0.011 265);
+}
+
+/* --------------------------------------------------------------------------
+   Tailwind theme mapping
+   `inline` keeps the var() reference in the generated utility, which is what
+   makes the `.dark` overrides above take effect without duplicating classes.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-inset: var(--surface-inset);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-inverted: var(--fg-inverted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-hover: var(--accent-soft-hover);
+
+  --color-success: var(--success);
+  --color-success-fg: var(--success-fg);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+
+  --color-warning: var(--warning);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-text: var(--warning-text);
+
+  --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+
+  --color-info: var(--info);
+  --color-info-fg: var(--info-fg);
+  --color-info-soft: var(--info-soft);
+  --color-info-text: var(--info-text);
+
+  --color-cat-indigo: var(--cat-indigo);
+  --color-cat-emerald: var(--cat-emerald);
+  --color-cat-amber: var(--cat-amber);
+  --color-cat-sky: var(--cat-sky);
+  --color-cat-violet: var(--cat-violet);
+  --color-cat-rose: var(--cat-rose);
+  --color-cat-teal: var(--cat-teal);
+  --color-cat-orange: var(--cat-orange);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --radius-3xl: 1.5rem;
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-pop: var(--shadow-pop);
+
+  /* Motion — short, eased, and never blocking interaction. */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+
+  --animate-fade-in: fade-in 0.24s var(--ease-out-quart) both;
+  --animate-fade-up: fade-up 0.32s var(--ease-out-quart) both;
+  --animate-scale-in: scale-in 0.16s var(--ease-spring) both;
+  --animate-slide-down: slide-down 0.18s var(--ease-out-quart) both;
+  --animate-slide-in-right: slide-in-right 0.28s var(--ease-out-quart) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  --animate-draw: draw 0.9s var(--ease-out-quart) both;
+  --animate-spin-slow: spin 1.1s linear infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -160% 0;
+    }
+    to {
+      background-position: 160% 0;
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @keyframes draw {
+    from {
+      stroke-dashoffset: 1200;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Base layer
+   -------------------------------------------------------------------------- */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    /* Prevent horizontal jitter when a dialog locks scroll. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* One consistent, high-contrast focus treatment everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  /* Mouse users don't get the ring; keyboard users always do. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background: var(--accent-soft-hover);
+    color: var(--fg);
+  }
+
+  /* Headings are tightened optically — the default tracking reads loose at
+     display sizes. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Numeric columns must never dance as values change. */
+  th,
+  td,
+  time,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Native date/time pickers are unreadable in dark mode without this. */
+  .dark input[type="date"]::-webkit-calendar-picker-indicator,
+  .dark input[type="month"]::-webkit-calendar-picker-indicator,
+  .dark input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.85);
+  }
+
+  /* Slim, unobtrusive scrollbars that match the theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--fg-subtle);
+  }
+
+  /* Respect the OS-level motion preference — animations become instant rather
+     than disappearing, so nothing depends on them to be visible. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Component-level utilities
+   -------------------------------------------------------------------------- */
+
+/** Frosted panel used by the top bar, command palette and popovers. */
+@utility glass {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-color: var(--glass-border);
+}
+
+/** The standard raised panel. */
+@utility panel {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+/** Subtle top highlight that makes a panel feel physically raised. */
+@utility panel-lift {
+  box-shadow: var(--shadow-md), var(--shadow-inner-top);
+}
+
+/** Interactive row/card hover. */
+@utility row-hover {
+  transition:
+    background-color 0.15s var(--ease-out-quart),
+    border-color 0.15s var(--ease-out-quart);
+  &:hover {
+    background-color: var(--surface-hover);
+  }
+}
+
+/** Loading placeholder with a travelling sheen. */
+@utility skeleton {
+  background-color: var(--surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--fg) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: var(--animate-shimmer);
+  border-radius: var(--radius-md);
+}
+
+/** Brand gradient text for marketing/auth headlines. */
+@utility text-gradient {
+  background-image: linear-gradient(
+    135deg,
+    var(--fg) 0%,
+    color-mix(in oklab, var(--accent) 70%, var(--fg)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/** Faint dotted grid, used behind the auth screens and empty states. */
+@utility grid-backdrop {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--fg) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+/** Horizontal scroller that hides its scrollbar (mobile tab strips). */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/** Truncate to N lines. */
+@utility line-clamp-* {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: --value(integer);
+  overflow: hidden;
+}
+
+/** Fades the bottom of a scrollable region to hint at more content. */
+@utility mask-fade-b {
+  mask-image: linear-gradient(to bottom, black 82%, transparent 100%);
+}
+
+/* --------------------------------------------------------------------------
+   Recharts theming
+   Scoped overrides so charts inherit our tokens instead of library defaults.
+   -------------------------------------------------------------------------- */
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid);
+}
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: transparent;
+}
+.recharts-text {
+  fill: var(--fg-subtle);
+  font-size: 11.5px;
+}
+.recharts-surface:focus,
+.recharts-wrapper:focus {
+  outline: none;
+}
+.recharts-active-dot circle {
+  stroke: var(--surface);
+}
+.recharts-tooltip-cursor {
+  fill: color-mix(in oklab, var(--fg) 4%, transparent);
+  stroke: var(--border);
+}
+.recharts-sector:focus,
+.recharts-rectangle:focus {
+  outline: none;
+}
+
+/* --------------------------------------------------------------------------
+   Print — powers "Export PDF" and "Print" across reports and the DSR digest.
+   -------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Chrome/Edge drop backgrounds by default; keep ours for badges & headers. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  [data-print="hide"],
+  nav[data-app-nav],
+  aside[data-app-sidebar],
+  header[data-app-topbar],
+  [data-toast-viewport],
+  button:not([data-print="keep"]) {
+    display: none !important;
+  }
+
+  [data-print="expand"] {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  .panel,
+  [data-print="card"] {
+    box-shadow: none !important;
+    border: 1px solid #d8dae2 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [data-print="break-before"] {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 10px;
+    color: #666;
+  }
+}

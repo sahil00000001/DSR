@@ -1,0 +1,134 @@
+import "server-only";
+import { z } from "zod";
+
+/**
+ * Validated server environment.
+ *
+ * Parsed once at module load so a misconfigured deployment fails loudly at
+ * boot rather than with a confusing runtime error three screens deep. Optional
+ * integrations (Google OAuth, SMTP) degrade gracefully instead of throwing —
+ * the corresponding feature simply reports itself as unconfigured.
+ */
+/**
+ * A URL that may legitimately be absent — and treats `""` as absent.
+ *
+ * `z.string().url().optional()` admits `undefined` but *rejects* the empty string,
+ * so a `.env` carrying `SUPABASE_URL=""` (the natural way to write "not set yet")
+ * would fail validation and stop the app booting. Env files habitually hold blank
+ * placeholders, so blank has to mean unset.
+ */
+const optionalUrl = z
+  .string()
+  .url()
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+
+  /**
+   * Non-pooled connection, used by `prisma migrate` / `db push` for DDL.
+   *
+   * Optional here because the *application* never reads it — but
+   * `prisma/schema.prisma` references it as `directUrl`, and Prisma errors when a
+   * referenced datasource variable is missing. In practice it must be set
+   * wherever `prisma generate` runs, including the Vercel build.
+   *
+   * With Supabase, this is the pooler host on port 5432 (session mode) rather
+   * than `db.<ref>.supabase.co`, which newer projects no longer publish.
+   */
+  DIRECT_URL: z.string().optional(),
+
+  /**
+   * Supabase project credentials.
+   *
+   * Cadence talks to Postgres directly through Prisma and owns its own sessions,
+   * so none of these are required to run. They're validated here (rather than read
+   * ad hoc) so adopting Supabase Storage for DSR attachments later is a
+   * configuration change, not a refactor. `SUPABASE_SECRET_KEY` bypasses
+   * row-level security — it must stay server-side, which is why no key here
+   * carries a `NEXT_PUBLIC_` prefix.
+   */
+  SUPABASE_URL: optionalUrl,
+  SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
+  SUPABASE_SECRET_KEY: z.string().optional(),
+  SUPABASE_JWKS_URL: optionalUrl,
+
+  AUTH_SECRET: z
+    .string()
+    .min(32, "AUTH_SECRET must be at least 32 characters — generate one with `openssl rand -hex 32`"),
+
+  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+
+  /**
+   * Shows the seeded sign-in credentials on the login screen. Intended for
+   * demos and review deployments — set to "false" for any real installation.
+   */
+  NEXT_PUBLIC_DEMO_MODE: z
+    .string()
+    .optional()
+    .transform((value) => value !== "false"),
+
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ALLOWED_DOMAINS: z.string().optional(),
+
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_SECURE: z
+    .string()
+    .optional()
+    .transform((v) => v !== "false"),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  EMAIL_FROM: z.string().default("Cadence <no-reply@cadence.local>"),
+
+  CRON_SECRET: z.string().optional(),
+});
+
+function parseEnv() {
+  const parsed = schema.safeParse(process.env);
+
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `  • ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(
+      `Invalid environment configuration:\n${issues}\n\nCopy .env.example to .env and fill in the required values.`,
+    );
+  }
+
+  return parsed.data;
+}
+
+export const env = parseEnv();
+
+/** Google OAuth is only offered when both halves of the credential are present. */
+export const isGoogleAuthEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+
+/** When SMTP is unset, the mailer writes rendered messages to the console instead. */
+export const isSmtpEnabled = Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD);
+
+export const isProduction = env.NODE_ENV === "production";
+
+/** Supabase-backed storage/realtime features can be enabled. */
+export const isSupabaseConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_SECRET_KEY);
+
+/**
+ * Warns when the runtime URL is a direct Postgres connection in production.
+ * On serverless that exhausts the connection limit under very modest load, and
+ * the failure looks like random 500s rather than a configuration problem.
+ */
+if (isProduction && !/pooler|pgbouncer/.test(env.DATABASE_URL)) {
+  console.warn(
+    "[cadence] DATABASE_URL is not a pooled connection. On serverless hosting, use the " +
+      "Supabase connection-pooler endpoint (port 6543) with ?pgbouncer=true&connection_limit=1.",
+  );
+}
+
+export const googleAllowedDomains = (env.GOOGLE_ALLOWED_DOMAINS ?? "")
+  .split(",")
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node oklch.mjs)",
+      "Bash(node scripts/validate_palette.js \"#5857eb,#009861,#e89805,#0098d7,#9c4be3,#e84167,#009d9e,#f36a22\" --mode light --surface \"#ffffff\")",
+      "Bash(node scripts/validate_palette.js \"#757dff,#35b47d,#f4ae34,#25ace7,#b471f7,#f56178,#32b4b4,#ff8444\" --mode dark --surface \"#121418\")",
+      "Bash(node search.mjs)",
+      "Bash(node scripts/validate_palette.js \"#5857eb,#009861,#9c4be3,#e89805,#009d9e,#f36a22,#0098d7,#e84167\" --mode light --surface \"#ffffff\")",
+      "Bash(node scripts/validate_palette.js \"#686eee,#019f68,#a05ae1,#c68300,#00a0a1,#dd6825,#0095d0,#dc4c64\" --mode dark --surface \"#121418\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('bcryptjs in deps:', 'bcryptjs' in p.dependencies\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(cd \"c:/Users/vashi/Downloads/POC/DSR\" && rm -rf .tmp-verify && rm -f /tmp/xlsx-test.ts && echo \"cleaned\")",
+      "Bash(node scripts/generate-icons.mjs)",
+      "Bash(npx next *)",
+      "Bash(curl -s -I -m 15 \"https://uonsppsmcjrsmpneoxvu.supabase.co/rest/v1/\")"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  }
+}
