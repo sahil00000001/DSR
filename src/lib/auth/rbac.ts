@@ -80,8 +80,27 @@ export const can = {
 
   viewDirectory: (_actor: Actor) => true,
 
-  /** Full profile including phone, salary-adjacent fields and audit history. */
-  viewEmployeeDetail: (actor: Actor, subject: Subject) =>
+  /**
+   * Open a colleague's profile page at all.
+   *
+   * Everyone, deliberately — this is a company directory, and its whole purpose is
+   * putting a name to a face and finding who someone reports to. Restricting this
+   * to managers made every directory card a dead link for employees: the listing
+   * showed all twenty people, and nineteen of them 404'd.
+   *
+   * What's *on* that page is a separate question — see `viewEmployeePrivateDetail`.
+   */
+  viewEmployeeProfile: (_actor: Actor, _subject: Subject) => true,
+
+  /**
+   * The private half of a profile: phone, date of birth, last sign-in, leave
+   * balances, attendance statistics and report history.
+   *
+   * Field-level enforcement already lives in `getEmployeeProfile()`, which simply
+   * doesn't select those columns when this returns false — so a component cannot
+   * leak what it was never handed.
+   */
+  viewEmployeePrivateDetail: (actor: Actor, subject: Subject) =>
     isSelf(actor, subject) || isManagerOrAdmin(actor),
 
   manageEmployees: (actor: Actor) => isAdmin(actor),

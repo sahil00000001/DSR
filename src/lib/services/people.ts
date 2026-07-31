@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { containsInsensitive, prisma } from "@/lib/db/prisma";
 import { asRole, asUserStatus } from "@/lib/constants/enums";
@@ -137,7 +138,12 @@ export interface EmployeeProfile extends EmployeeListItem {
   }>;
 }
 
-export async function getEmployeeProfile(
+/**
+ * Wrapped in React's `cache()` because `generateMetadata` and the page component
+ * both need it — without this the profile is fetched twice per request, since Next
+ * runs metadata generation as a separate pass.
+ */
+export const getEmployeeProfile = cache(async function getEmployeeProfile(
   id: string,
   actor: Actor,
 ): Promise<EmployeeProfile | null> {
@@ -197,7 +203,7 @@ export async function getEmployeeProfile(
     directReports: row.reports,
     reportCount: row._count.reports,
   };
-}
+});
 
 /** Recent activity for a profile timeline. */
 export async function getEmployeeActivity(userId: string, days = 30) {

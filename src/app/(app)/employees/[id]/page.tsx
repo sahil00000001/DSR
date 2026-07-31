@@ -8,6 +8,7 @@ import {
   CalendarPlus,
   Clock,
   FileText,
+  Lock,
   Mail,
   MapPin,
   Phone,
@@ -49,7 +50,13 @@ import {
   lastNDays,
   today,
 } from "@/lib/utils/date";
-import { formatDuration, formatHours, formatPercent, truncate } from "@/lib/utils/format";
+import {
+  firstName,
+  formatDuration,
+  formatHours,
+  formatPercent,
+  truncate,
+} from "@/lib/utils/format";
 import { markdownToText } from "@/lib/utils/markdown";
 
 export async function generateMetadata({
@@ -72,19 +79,28 @@ export default async function EmployeeProfilePage({
   const { id } = await params;
 
   const profile = await getEmployeeProfile(id, user);
+  // A genuinely missing record is the only 404 here. Anyone may open a colleague's
+  // profile; what appears on it is decided per-section below.
   if (!profile) notFound();
-  if (!can.viewEmployeeDetail(user, { id: profile.id })) notFound();
 
-  const isSelf = profile.id === user.id;
+  const canSeePrivate = can.viewEmployeePrivateDetail(user, { id: profile.id });
   const range = lastNDays(30);
 
-  const [activity, attendance, balances, streak] = await Promise.all([
-    getEmployeeActivity(profile.id, 30),
-    getAttendanceSummary(profile.id, range),
-    // Balances are private: only the person themselves and management see them.
-    isSelf || user.role !== "EMPLOYEE" ? getLeaveBalances(profile.id) : Promise.resolve([]),
-    getReportStreak(profile.id),
-  ]);
+  /**
+   * Private data is not fetched at all unless the viewer may see it.
+   *
+   * Skipping the queries rather than filtering afterwards means a colleague's
+   * attendance and report history never enter the render tree — and it takes four
+   * queries off the request for the common directory-browsing case.
+   */
+  const [activity, attendance, balances, streak] = canSeePrivate
+    ? await Promise.all([
+        getEmployeeActivity(profile.id, 30),
+        getAttendanceSummary(profile.id, range),
+        getLeaveBalances(profile.id),
+        getReportStreak(profile.id),
+      ])
+    : [null, null, [], 0];
 
   const tenureDays = differenceInDays(profile.joinedAt, today());
   const tenureYears = Math.floor(tenureDays / 365);
@@ -289,8 +305,21 @@ export default async function EmployeeProfilePage({
           ) : null}
         </aside>
 
-        {/* Activity */}
+        {/* Activity — private to the person themselves and their management line. */}
         <div className="min-w-0 space-y-5">
+          {!canSeePrivate || !activity || !attendance ? (
+            <Card>
+              <EmptyState
+                icon={<Lock className="size-5" />}
+                title={`${firstName(profile.name)}'s activity is private`}
+                description={
+                  "Status reports, attendance and leave are visible to the person themselves, " +
+                  "their manager and admins. Everything else on this page is open to the team."
+                }
+              />
+            </Card>
+          ) : (
+            <>
           <StatGrid columns={4}>
             <StatCard
               label="Reports (30d)"
@@ -391,6 +420,8 @@ export default async function EmployeeProfilePage({
               </CardContent>
             </Card>
           ) : null}
+            </>
+          )}
         </div>
       </div>
     </>
