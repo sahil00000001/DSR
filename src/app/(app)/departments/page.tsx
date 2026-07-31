@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2, Users } from "lucide-react";
+import { ArrowRight, Building2, Users } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -115,16 +115,25 @@ export default async function DepartmentsPage() {
                     ) : null
                   }
                 >
-                  <CardTitle className="flex items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="size-2.5 rounded-full"
-                      style={{ backgroundColor: `var(--cat-${department.color})` }}
-                    />
-                    {department.name}
-                    <span className="text-[12px] font-normal text-fg-subtle tabular-nums">
-                      {pluralize(department.memberCount, "person", "people")}
-                    </span>
+                  <CardTitle>
+                    <Link
+                      href={`/departments/${department.slug}`}
+                      className="group flex items-center gap-2 rounded outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="size-2.5 rounded-full"
+                        style={{ backgroundColor: `var(--cat-${department.color})` }}
+                      />
+                      <span className="group-hover:underline">{department.name}</span>
+                      <span className="text-[12px] font-normal text-fg-subtle tabular-nums">
+                        {pluralize(department.memberCount, "person", "people")}
+                      </span>
+                      <ArrowRight
+                        className="size-3.5 -translate-x-1 text-fg-subtle opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100"
+                        aria-hidden="true"
+                      />
+                    </Link>
                   </CardTitle>
                   {department.description ? (
                     <p className="text-[13px] text-fg-muted">{department.description}</p>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { CountBadge } from "@/components/ui/badge";
+import { CountBadge, Kbd } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { BrandLockup } from "@/components/layout/brand";
@@ -16,8 +16,7 @@ import {
   type NavItem,
 } from "@/components/layout/nav-config";
 import type { Role } from "@/lib/constants/enums";
-
-export const SIDEBAR_COOKIE = "cadence_sidebar";
+import { PREFERENCE_COOKIE_MAX_AGE, SIDEBAR_COOKIE } from "@/lib/constants/cookies";
 
 export type NavCounts = Partial<Record<BadgeKey, number>>;
 
@@ -39,13 +38,32 @@ export function Sidebar({ role, counts, initialCollapsed = false }: SidebarProps
   const pathname = usePathname();
   const sections = navFor(role);
 
-  const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    document.cookie = `${SIDEBAR_COOKIE}=${next ? "collapsed" : "expanded"};path=/;max-age=${
-      60 * 60 * 24 * 365
-    };SameSite=Lax`;
-  };
+  const toggle = useCallback(() => {
+    setCollapsed((current) => {
+      const next = !current;
+      document.cookie =
+        `${SIDEBAR_COOKIE}=${next ? "collapsed" : "expanded"}` +
+        `;path=/;max-age=${PREFERENCE_COOKIE_MAX_AGE};SameSite=Lax`;
+      return next;
+    });
+  }, []);
+
+  /**
+   * ⌘\ / Ctrl+\ — the convention in VS Code, Linear and Notion.
+   *
+   * Worth having on its own merits, and it also guarantees a way back if the
+   * button is ever hard to find again.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "\\") {
+        event.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggle]);
 
   return (
     <aside
@@ -57,25 +75,53 @@ export function Sidebar({ role, counts, initialCollapsed = false }: SidebarProps
         collapsed ? "w-[68px]" : "w-[252px]",
       )}
     >
+      {/*
+        The toggle lives in the header in BOTH states, on purpose.
+
+        It used to sit in the header when expanded and at the very bottom of the
+        sidebar when collapsed. You collapse from the top, look at the top to undo
+        it, and find nothing — reopenable in theory, undiscoverable in practice.
+        A control that moves when you use it is a control you lose.
+
+        Collapsed, the brand mark is hidden and the button takes its place, so the
+        hit target stays in the same corner either way.
+      */}
       <div
         className={cn(
           "flex h-14 shrink-0 items-center border-b border-border",
           collapsed ? "justify-center px-2" : "justify-between px-4",
         )}
       >
-        <BrandLockup collapsed={collapsed} />
-        {!collapsed ? (
-          <Tooltip content="Collapse sidebar" placement="right">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Collapse sidebar"
-              className="grid size-7 place-items-center rounded-md text-fg-subtle transition-colors hover:bg-surface-hover hover:text-fg"
-            >
+        {!collapsed ? <BrandLockup /> : null}
+
+        <Tooltip
+          content={
+            <span className="flex items-center gap-1.5">
+              {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              <Kbd className="border-white/25 bg-white/10 text-white/80">⌘\</Kbd>
+            </span>
+          }
+          placement="right"
+        >
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            className={cn(
+              "grid place-items-center rounded-md text-fg-subtle transition-colors",
+              "hover:bg-surface-hover hover:text-fg",
+              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
+              collapsed ? "size-9" : "size-7",
+            )}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
               <PanelLeftClose className="size-4" />
-            </button>
-          </Tooltip>
-        ) : null}
+            )}
+          </button>
+        </Tooltip>
       </div>
 
       <div className={cn("shrink-0 py-3", collapsed ? "px-2" : "px-3")}>
@@ -124,20 +170,6 @@ export function Sidebar({ role, counts, initialCollapsed = false }: SidebarProps
         ))}
       </nav>
 
-      {collapsed ? (
-        <div className="shrink-0 border-t border-border p-2">
-          <Tooltip content="Expand sidebar" placement="right">
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Expand sidebar"
-              className="grid size-9 w-full place-items-center rounded-lg text-fg-subtle transition-colors hover:bg-surface-hover hover:text-fg"
-            >
-              <PanelLeftOpen className="size-4" />
-            </button>
-          </Tooltip>
-        </div>
-      ) : null}
     </aside>
   );
 }

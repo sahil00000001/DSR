@@ -43,7 +43,7 @@ Then build both variables from it:
 
 ```bash
 # runtime — append Prisma's pooler flags
-DATABASE_URL=".../postgres?pgbouncer=true&connection_limit=1"     # port 6543
+DATABASE_URL=".../postgres?pgbouncer=true&connection_limit=5&pool_timeout=20"     # port 6543
 
 # migrations — same host, swap the port, no flags
 DIRECT_URL="...:5432/postgres"
@@ -87,7 +87,7 @@ Set these in **Vercel → Project → Settings → Environment Variables**.
 ### Required
 
 ```bash
-DATABASE_URL="postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5&pool_timeout=20"
 DIRECT_URL="postgresql://postgres:<PASSWORD>@<direct-host>:5432/postgres?sslmode=require"
 
 # Generate a fresh one — never reuse the development value:
@@ -161,7 +161,43 @@ running open — anyone who guessed the path could otherwise email the whole tea
 
 ---
 
-## 3. Deploy
+## 3. Function region — co-locate with the database
+
+`vercel.json` pins `"regions": ["bom1"]` (Mumbai) to match the Supabase project in
+`ap-south-1`. **This is the single largest performance factor in this app.**
+
+Vercel defaults to `iad1` (Washington DC). With the database in Mumbai, that
+configuration produced:
+
+```
+X-Vercel-Id: bom1::iad1::...     request entered at Mumbai, executed in Washington
+GET /api/health -> latencyMs: 187    for a single SELECT 1
+```
+
+187 ms for one trivial query is not query cost, it is 12,000 km of fibre. Pages here
+issue tens of queries, and while they are batched with `Promise.all`, the waves are
+serialised by the pool size — so the round trip is paid several times per page. That
+is what "the whole app feels slow" was.
+
+Co-located, the same query is ~2–5 ms.
+
+**If you move the database, change this too.** The two must agree; a mismatch is
+invisible in the code and shows up only as uniform slowness. Confirm with:
+
+```bash
+curl -sI https://<your-app>.vercel.app/api/health | grep -i x-vercel-id
+# want both segments equal, e.g. bom1::bom1::...
+```
+
+Region can also be set in Vercel → Settings → Functions → Function Region; the
+`vercel.json` value is authoritative when present.
+
+Available regions are listed at https://vercel.com/docs/regions — pick the one
+matching your Supabase project (Supabase → Settings → General → Region).
+
+---
+
+## 4. Deploy
 
 ```bash
 npm i -g vercel
@@ -176,7 +212,7 @@ the Prisma client is generated with the deployment's own environment.
 
 ---
 
-## 4. Scheduled reminders
+## 5. Scheduled reminders
 
 `vercel.json` registers one cron job:
 
@@ -209,8 +245,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cro
 
 ---
 
-## 5. Post-deploy checklist
+## 6. Post-deploy checklist
 
+- [ ] `curl -sI .../api/health | grep -i x-vercel-id` shows the SAME region twice
 - [ ] `/login` renders and the demo credentials block is **hidden**
 - [ ] Sign in with the seeded admin
 - [ ] Settings → *About this workspace* reports email as **configured**
@@ -225,7 +262,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cro
 
 ---
 
-## 6. First-run setup for a real team
+## 7. First-run setup for a real team
 
 The seeded demo data is not a starting point for a real installation.
 
@@ -257,7 +294,7 @@ report counts and attendance inference.
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
