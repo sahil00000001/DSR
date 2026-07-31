@@ -43,7 +43,7 @@ Then build both variables from it:
 
 ```bash
 # runtime — append Prisma's pooler flags
-DATABASE_URL=".../postgres?pgbouncer=true&connection_limit=1"     # port 6543
+DATABASE_URL=".../postgres?pgbouncer=true&connection_limit=5&pool_timeout=20"     # port 6543
 
 # migrations — same host, swap the port, no flags
 DIRECT_URL="...:5432/postgres"
@@ -87,7 +87,7 @@ Set these in **Vercel → Project → Settings → Environment Variables**.
 ### Required
 
 ```bash
-DATABASE_URL="postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5&pool_timeout=20"
 DIRECT_URL="postgresql://postgres:<PASSWORD>@<direct-host>:5432/postgres?sslmode=require"
 
 # Generate a fresh one — never reuse the development value:
@@ -197,7 +197,7 @@ matching your Supabase project (Supabase → Settings → General → Region).
 
 ---
 
-## 3. Deploy
+## 4. Deploy
 
 ```bash
 npm i -g vercel
@@ -211,10 +211,6 @@ Or connect the Git repository in the Vercel dashboard and push.
 the Prisma client is generated with the deployment's own environment.
 
 ---
-
-## 4. Deploy
-
-_(previously section 3)_
 
 ## 5. Scheduled reminders
 
@@ -249,8 +245,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cro
 
 ---
 
-## 5. Post-deploy checklist
+## 6. Post-deploy checklist
 
+- [ ] `curl -sI .../api/health | grep -i x-vercel-id` shows the SAME region twice
 - [ ] `/login` renders and the demo credentials block is **hidden**
 - [ ] Sign in with the seeded admin
 - [ ] Settings → *About this workspace* reports email as **configured**
@@ -265,7 +262,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cro
 
 ---
 
-## 6. First-run setup for a real team
+## 7. First-run setup for a real team
 
 The seeded demo data is not a starting point for a real installation.
 
@@ -297,7 +294,7 @@ report counts and attendance inference.
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
