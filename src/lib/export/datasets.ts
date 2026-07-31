@@ -5,16 +5,19 @@ import { listDsrForExport, resolveDateRange, getCompletionByEmployee } from "@/l
 import { getAttendanceBoard } from "@/lib/services/attendance";
 import { listLeaveRequests } from "@/lib/services/leave";
 import { listEmployees } from "@/lib/services/people";
+import { listExpensesForExport } from "@/lib/services/expenses";
 import { markdownToText } from "@/lib/utils/markdown";
 import {
   ATTENDANCE_STATUS_LABEL,
   DSR_STATUS_LABEL,
+  EXPENSE_CATEGORY_LABEL,
+  EXPENSE_STATUS_LABEL,
   LEAVE_STATUS_LABEL,
   LEAVE_TYPE_LABEL,
   ROLE_LABEL,
   USER_STATUS_LABEL,
 } from "@/lib/constants/enums";
-import { endOfMonth, startOfMonth, toDayKey, today } from "@/lib/utils/date";
+import { endOfMonth, startOfMonth, toDayKey, today, tryParseDayKey } from "@/lib/utils/date";
 import type { DsrFilterInput } from "@/lib/validation/schemas";
 
 /**
@@ -47,7 +50,8 @@ export type ExportKind =
   | "leave"
   | "employees"
   | "departments"
-  | "dsr-completion";
+  | "dsr-completion"
+  | "expenses";
 
 /** Reads a `?month=YYYY-MM` param, defaulting to the current month. */
 function monthRange(monthParam: string | null) {
@@ -246,6 +250,50 @@ export async function buildDataset(
           { header: "Completion %", value: (row) => row.rate, width: 14 },
           { header: "Total hours", value: (row) => row.totalHours, width: 12 },
           { header: "Last submitted", value: (row) => row.lastSubmittedAt, width: 18 },
+        ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
+      } as Dataset;
+    }
+
+    case "expenses": {
+      const rows = await listExpensesForExport(
+        {
+          q: params.get("q") ?? undefined,
+          status: params.get("status")?.split(",").filter(Boolean),
+          category: params.get("category")?.split(",").filter(Boolean),
+          department: params.get("department")?.split(",").filter(Boolean),
+          employee: params.get("employee")?.split(",").filter(Boolean),
+          from: tryParseDayKey(params.get("from")) ?? undefined,
+          to: tryParseDayKey(params.get("to")) ?? undefined,
+        },
+        actor,
+      );
+
+      return {
+        filename: "expense-claims",
+        sheetName: "Expenses",
+        rows,
+        columns: [
+          { header: "Claim no.", value: (row) => row.claimNumber, width: 12 },
+          { header: "Employee", value: (row) => row.user.name, width: 22 },
+          { header: "Employee ID", value: (row) => row.user.employeeCode, width: 12 },
+          { header: "Department", value: (row) => row.user.department?.name ?? "", width: 18 },
+          { header: "Spent on", value: (row) => row.expenseDate, width: 12 },
+          { header: "Category", value: (row) => EXPENSE_CATEGORY_LABEL[row.category], width: 18 },
+          { header: "Title", value: (row) => row.title, width: 40 },
+          // Rupees, not paise: the sheet is read by people and summed by Excel.
+          // Two decimal places are exact here because the source is an integer.
+          { header: "Amount", value: (row) => row.amountMinor / 100, width: 12 },
+          { header: "Currency", value: (row) => row.currency, width: 10 },
+          { header: "Paid to", value: (row) => row.vendor ?? "", width: 24 },
+          { header: "Bill no.", value: (row) => row.referenceNo ?? "", width: 14 },
+          { header: "Status", value: (row) => EXPENSE_STATUS_LABEL[row.status], width: 18 },
+          { header: "Receipts", value: (row) => row.attachmentCount, width: 10 },
+          { header: "Description", value: (row) => row.description, width: 56 },
+          { header: "Submitted at", value: (row) => row.submittedAt, width: 18 },
+          { header: "Decided by", value: (row) => row.decidedBy?.name ?? "", width: 20 },
+          { header: "Decided at", value: (row) => row.decidedAt, width: 18 },
+          { header: "Decision note", value: (row) => row.decisionNote ?? "", width: 36 },
+          { header: "Reimbursed at", value: (row) => row.reimbursedAt, width: 18 },
         ] satisfies Array<ExportColumn<(typeof rows)[number]>>,
       } as Dataset;
     }

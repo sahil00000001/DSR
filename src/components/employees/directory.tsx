@@ -71,7 +71,7 @@ export function Directory({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const view = usePersistentState<"grid" | "table">("cadence:directory-view", "grid");
+  const view = usePersistentState<"grid" | "table">("pmpl:directory-view", "grid");
   const [searchDraft, setSearchDraft] = useState(searchParams.get("q") ?? "");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<EmployeeDto | null>(null);

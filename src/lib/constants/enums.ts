@@ -183,6 +183,11 @@ export const NOTIFICATION_TYPES = [
   "DSR_REVIEWED",
   "DSR_FLAGGED",
   "ATTENDANCE_REMINDER",
+  "EXPENSE_SUBMITTED",
+  "EXPENSE_APPROVED",
+  "EXPENSE_REJECTED",
+  "EXPENSE_REIMBURSED",
+  "EXPENSE_COMMENT",
   "ANNOUNCEMENT",
   "MENTION",
   "SYSTEM",
@@ -257,4 +262,105 @@ export function asLeaveType(value: string): LeaveType {
 
 export function asUserStatus(value: string): UserStatus {
   return (USER_STATUSES as readonly string[]).includes(value) ? (value as UserStatus) : "ACTIVE";
+}
+
+// ---------------------------------------------------------------------------
+//  Expense claims
+// ---------------------------------------------------------------------------
+
+/**
+ * Categories chosen for a manufacturing business rather than a software one:
+ * freight, tooling and raw material are what people at a plant actually spend on.
+ */
+export const EXPENSE_CATEGORIES = [
+  "TRAVEL",
+  "FUEL",
+  "FREIGHT",
+  "TOOLS",
+  "MATERIALS",
+  "MEALS",
+  "LODGING",
+  "REPAIRS",
+  "OFFICE",
+  "OTHER",
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const EXPENSE_CATEGORY_LABEL: Record<ExpenseCategory, string> = {
+  TRAVEL: "Travel",
+  FUEL: "Fuel",
+  FREIGHT: "Freight & courier",
+  TOOLS: "Tools & spares",
+  MATERIALS: "Raw material",
+  MEALS: "Meals",
+  LODGING: "Lodging",
+  REPAIRS: "Repairs & maintenance",
+  OFFICE: "Office supplies",
+  OTHER: "Other",
+};
+
+export const EXPENSE_CATEGORY_HINT: Record<ExpenseCategory, string> = {
+  TRAVEL: "Bus, train, flight, taxi or auto fare.",
+  FUEL: "Petrol or diesel for a company or personal vehicle used for work.",
+  FREIGHT: "Transport of goods, courier and packing charges.",
+  TOOLS: "Hand tools, cutting tools, machine spares.",
+  MATERIALS: "Sheet, wire, fasteners or components bought directly.",
+  MEALS: "Food while travelling or working late.",
+  LODGING: "Hotel or guest house while away from your plant.",
+  REPAIRS: "Machine or building repair paid for on the spot.",
+  OFFICE: "Stationery, printing, small office items.",
+  OTHER: "Anything that doesn't fit above — explain it in the description.",
+};
+
+export const EXPENSE_STATUSES = [
+  "DRAFT",
+  "SUBMITTED",
+  "APPROVED",
+  "REJECTED",
+  "REIMBURSED",
+  "CANCELLED",
+] as const;
+export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
+
+export const EXPENSE_STATUS_LABEL: Record<ExpenseStatus, string> = {
+  DRAFT: "Draft",
+  SUBMITTED: "Awaiting approval",
+  APPROVED: "Approved",
+  REJECTED: "Declined",
+  REIMBURSED: "Reimbursed",
+  CANCELLED: "Withdrawn",
+};
+
+export const EXPENSE_STATUS_TONE = {
+  DRAFT: "neutral",
+  SUBMITTED: "warning",
+  APPROVED: "info",
+  REJECTED: "danger",
+  REIMBURSED: "success",
+  CANCELLED: "neutral",
+} as const;
+
+/** What the claimant should expect next, shown on the claim itself. */
+export const EXPENSE_STATUS_MEANING: Record<ExpenseStatus, string> = {
+  DRAFT: "Not submitted yet — only you can see this.",
+  SUBMITTED: "An admin has been notified and will review it.",
+  APPROVED: "Approved for payment. Finance will mark it reimbursed once paid.",
+  REJECTED: "Declined. Read the note, then submit a corrected claim if needed.",
+  REIMBURSED: "Paid out. Nothing further needed.",
+  CANCELLED: "You withdrew this claim.",
+};
+
+/** Statuses that still count as money owed to the employee. */
+export const EXPENSE_OPEN_STATUSES = ["SUBMITTED", "APPROVED"] as const;
+
+export function asExpenseStatus(value: string): ExpenseStatus {
+  return (EXPENSE_STATUSES as readonly string[]).includes(value)
+    ? (value as ExpenseStatus)
+    : "DRAFT";
+}
+
+export function asExpenseCategory(value: string): ExpenseCategory {
+  return (EXPENSE_CATEGORIES as readonly string[]).includes(value)
+    ? (value as ExpenseCategory)
+    : "OTHER";
 }

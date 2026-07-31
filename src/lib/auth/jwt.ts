@@ -1,4 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
+import { BRAND, brandCookie } from "@/lib/constants/brand";
 
 /**
  * Session token signing and verification.
@@ -13,11 +14,11 @@ import { jwtVerify, SignJWT } from "jose";
  * whenever the token happens to expire.
  */
 
-export const SESSION_COOKIE = "cadence_session";
+export const SESSION_COOKIE = brandCookie("session");
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
-const ISSUER = "cadence";
-const AUDIENCE = "cadence:web";
+const ISSUER = BRAND.cookiePrefix;
+const AUDIENCE = `${BRAND.cookiePrefix}:web`;
 const ALGORITHM = "HS256";
 
 export interface SessionClaims {

@@ -119,3 +119,54 @@ export function listSentence(items: string[]): string {
   if (items.length === 1) return items[0]!;
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
+
+// ---------------------------------------------------------------------------
+//  Money
+// ---------------------------------------------------------------------------
+
+/**
+ * Money is handled in **minor units** (paise) as integers throughout.
+ *
+ * A Float cannot represent 1234.55 exactly, so a column of Floats does not sum to
+ * what a person adds up by hand — and an expense system whose totals are visibly
+ * wrong is worse than none. Conversion to a decimal happens only here, at the
+ * display boundary.
+ */
+
+/** "₹1,234.55" — Indian digit grouping (1,23,456.78). */
+export function formatMoney(amountMinor: number, currency = "INR"): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amountMinor / 100);
+}
+
+/** "₹1.2L" / "₹45.6K" — for tiles where the exact paise don't matter. */
+export function formatMoneyCompact(amountMinor: number, currency = "INR"): string {
+  const rupees = amountMinor / 100;
+  const symbol = currency === "INR" ? "₹" : "";
+
+  if (Math.abs(rupees) >= 10_000_000) return `${symbol}${(rupees / 10_000_000).toFixed(2)}Cr`;
+  if (Math.abs(rupees) >= 100_000) return `${symbol}${(rupees / 100_000).toFixed(2)}L`;
+  if (Math.abs(rupees) >= 1_000) return `${symbol}${(rupees / 1_000).toFixed(1)}K`;
+  return formatMoney(amountMinor, currency);
+}
+
+/**
+ * Parses a typed amount into minor units.
+ *
+ * Tolerates what people actually type: "1,234.5", "₹1234", " 1234.55 ". Returns
+ * null for anything it cannot read, so the caller reports a field error rather
+ * than silently storing a zero.
+ */
+export function parseMoneyToMinor(input: string): number | null {
+  const cleaned = input.replace(/[₹,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+
+  // Scale via string maths, not `* 100` — 19.99 * 100 is 1998.9999999999998.
+  const [whole, fraction = ""] = cleaned.split(".");
+  const paise = `${whole}${fraction.padEnd(2, "0").slice(0, 2)}`;
+  const value = Number(paise);
+  return Number.isSafeInteger(value) ? value : null;
+}

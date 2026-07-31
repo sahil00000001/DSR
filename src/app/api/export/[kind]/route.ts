@@ -29,6 +29,7 @@ const VALID_KINDS: ExportKind[] = [
   "employees",
   "departments",
   "dsr-completion",
+  "expenses",
 ];
 
 export async function GET(

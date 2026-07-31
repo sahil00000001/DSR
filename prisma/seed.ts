@@ -1,10 +1,10 @@
 /**
  * Database seed.
  *
- * Produces a workspace that looks like it has been in use for three months:
- * 20 people across 6 departments and 4 locations, ~90 days of attendance and
- * status reports, a leave history with pending requests waiting for a decision,
- * announcements, notifications and an audit trail.
+ * Produces a workspace for Pooja Machines Private Limited that looks like it has
+ * been in use for three months: 20 people across 6 departments and 4 locations,
+ * ~90 days of attendance and status reports, a leave history with pending requests,
+ * expense claims in every state, announcements, notifications and an audit trail.
  *
  * ## Determinism
  *
@@ -23,13 +23,16 @@
  * Run with: npm run db:seed   (or npm run db:reset to wipe first)
  */
 
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { randomBytes, scryptSync } from "node:crypto";
 import {
   ANNOUNCEMENTS,
   BLOCKERS,
   DEPARTMENTS,
   DEPARTMENT_HEADS,
+  EXPENSES,
   HOLIDAYS,
   LEAVE_REASONS,
   LOCATIONS,
@@ -39,7 +42,23 @@ import {
   TASKS_BY_DEPARTMENT,
 } from "./seed-data";
 
-const prisma = new PrismaClient();
+/**
+ * Prisma 7 connects through a driver adapter, not a URL in the schema — so the
+ * seed builds its own, exactly as the runtime client does.
+ *
+ * It uses **DIRECT_URL** (Supabase pooler, session mode on 5432) rather than the
+ * transaction-mode pooler the app uses. The seed writes tens of thousands of rows
+ * in one long-lived process; session mode is the right shape for that, and it is
+ * the same endpoint `prisma db push` already targets.
+ */
+const seedConnectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+if (!seedConnectionString) {
+  throw new Error("Neither DIRECT_URL nor DATABASE_URL is set — cannot connect to seed.");
+}
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: seedConnectionString, max: 4 }),
+});
 
 // ---------------------------------------------------------------------------
 //  Deterministic randomness
@@ -107,7 +126,7 @@ function atHour(day: Date, hour: number, minute = 0) {
 //  Password
 // ---------------------------------------------------------------------------
 
-const DEMO_PASSWORD = "Cadence#2026";
+const DEMO_PASSWORD = "Pooja@Machines26";
 
 /**
  * Hashes the demo password once and reuses the result for all 20 accounts.
@@ -140,7 +159,10 @@ async function reset() {
   // `SetNull` rather than cascade, so relying on cascade alone isn't enough.
   await prisma.auditLog.deleteMany();
   await prisma.notification.deleteMany();
+  // Attachments before claims: the FK is `SetNull`, not cascade.
   await prisma.attachment.deleteMany();
+  await prisma.expenseComment.deleteMany();
+  await prisma.expenseClaim.deleteMany();
   await prisma.dailyStatusReport.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.leaveRequest.deleteMany();
@@ -208,7 +230,10 @@ async function main() {
   // --- People -------------------------------------------------------------
   console.log("→ People…");
   const passwordHash = buildDemoHash();
-  const userByEmail = new Map<string, { id: string; joinedAt: Date; department: string }>();
+  const userByEmail = new Map<
+    string,
+    { id: string; name: string; joinedAt: Date; department: string }
+  >();
 
   for (const [index, person] of PEOPLE.entries()) {
     const joinedAt = addDays(TODAY, -Math.round(person.joinedMonthsAgo * 30.44));
@@ -241,6 +266,7 @@ async function main() {
 
     userByEmail.set(person.email, {
       id: created.id,
+      name: person.name,
       joinedAt,
       department: person.department,
     });
@@ -341,7 +367,7 @@ async function main() {
             : "CANCELLED";
 
       const requester = PEOPLE.find((candidate) => candidate.email === email)!;
-      const deciderEmail = requester.managerEmail ?? "aisha.khan@cadence.dev";
+      const deciderEmail = requester.managerEmail ?? "anil.gupta@poojamachines.co.in";
       const decider = userByEmail.get(deciderEmail);
 
       await prisma.leaveRequest.create({
@@ -567,8 +593,8 @@ async function main() {
 
   // --- Notifications ------------------------------------------------------
   console.log("→ Notifications…");
-  const admin = userByEmail.get("aisha.khan@cadence.dev")!;
-  const manager = userByEmail.get("rohan.mehta@cadence.dev")!;
+  const admin = userByEmail.get("anil.gupta@poojamachines.co.in")!;
+  const manager = userByEmail.get("harpreet.singh@poojamachines.co.in")!;
 
   const pendingForManager = await prisma.leaveRequest.findMany({
     where: { status: "PENDING" },
@@ -618,13 +644,16 @@ async function main() {
   console.log("→ Audit log…");
   const auditSeed = [
     { actorId: admin.id, action: "auth.login", entity: "user", entityId: admin.id, daysAgo: 0 },
-    { actorId: admin.id, action: "employee.create", entity: "user", entityId: userByEmail.get("lakshmi.reddy@cadence.dev")!.id, daysAgo: 90 },
+    { actorId: admin.id, action: "employee.create", entity: "user", entityId: userByEmail.get("gopal.nair@poojamachines.co.in")!.id, daysAgo: 90 },
     { actorId: admin.id, action: "holiday.create", entity: "holiday", entityId: null, daysAgo: 6 },
     { actorId: admin.id, action: "announcement.create", entity: "announcement", entityId: null, daysAgo: 12 },
     { actorId: manager.id, action: "dsr.bulk_review", entity: "dsr", entityId: null, daysAgo: 1 },
     { actorId: manager.id, action: "leave.approve", entity: "leave", entityId: null, daysAgo: 3 },
     { actorId: admin.id, action: "export.download", entity: "dsr", entityId: null, daysAgo: 2 },
     { actorId: admin.id, action: "settings.update", entity: "user", entityId: admin.id, daysAgo: 8 },
+    { actorId: admin.id, action: "expense.approve", entity: "expense", entityId: null, daysAgo: 14 },
+    { actorId: admin.id, action: "expense.reimburse", entity: "expense", entityId: null, daysAgo: 38 },
+    { actorId: admin.id, action: "expense.reject", entity: "expense", entityId: null, daysAgo: 41 },
   ];
 
   for (const entry of auditSeed) {
@@ -642,14 +671,116 @@ async function main() {
     });
   }
 
+  // --- Expense claims -----------------------------------------------------
+  console.log("→ Expense claims…");
+
+  // Oldest first, so the EXP-nnnn sequence runs in the same order a real ledger
+  // would have grown. `nextClaimNumber()` reads the newest row, so inserting out
+  // of order would produce numbers that don't match the dates.
+  const expenseOrder = [...EXPENSES].sort((a, b) => b.daysAgo - a.daysAgo);
+
+  let claimSequence = 0;
+  const claimIdsByStatus = new Map<string, string[]>();
+
+  for (const claim of expenseOrder) {
+    const claimant = userByEmail.get(claim.claimantEmail);
+    if (!claimant) continue;
+
+    claimSequence += 1;
+    const filedAt = addDays(TODAY, -claim.daysAgo);
+    const decided = ["APPROVED", "REJECTED", "REIMBURSED"].includes(claim.status);
+
+    // A claim is submitted the same day or the next; decided a day or two later;
+    // paid out roughly a fortnight after that. Enough spread that the timeline on
+    // the detail page has something to show.
+    const submittedAt = claim.status === "DRAFT" ? null : atHour(filedAt, 18, 20);
+    const decidedAt = decided ? atHour(addDays(filedAt, 1 + Math.floor(random() * 2)), 11) : null;
+    const reimbursedAt =
+      claim.status === "REIMBURSED" ? atHour(addDays(decidedAt!, 12), 16) : null;
+
+    const created = await prisma.expenseClaim.create({
+      data: {
+        claimNumber: `EXP-${String(claimSequence).padStart(4, "0")}`,
+        userId: claimant.id,
+        title: claim.title,
+        description: claim.description,
+        category: claim.category,
+        // Rupees in the fixture, paise in the column.
+        amountMinor: claim.amount * 100,
+        currency: "INR",
+        expenseDate: filedAt,
+        vendor: claim.vendor ?? null,
+        referenceNo: claim.referenceNo ?? null,
+        status: claim.status,
+        submittedAt,
+        decidedById: decided || claim.status === "CANCELLED" ? admin.id : null,
+        decidedAt: claim.status === "CANCELLED" ? atHour(addDays(filedAt, 1), 10) : decidedAt,
+        decisionNote: claim.decisionNote ?? null,
+        reimbursedAt,
+        createdAt: atHour(filedAt, 18),
+      },
+      select: { id: true, claimNumber: true },
+    });
+
+    claimIdsByStatus.set(claim.status, [
+      ...(claimIdsByStatus.get(claim.status) ?? []),
+      created.id,
+    ]);
+
+    for (const comment of claim.comments ?? []) {
+      await prisma.expenseComment.create({
+        data: {
+          claimId: created.id,
+          authorId: comment.fromAdmin ? admin.id : claimant.id,
+          body: comment.body,
+          createdAt: atHour(addDays(filedAt, comment.daysAfter), comment.fromAdmin ? 11 : 15),
+        },
+      });
+    }
+
+    // Notify the side that didn't act, exactly as the actions do. Only for claims
+    // recent enough that a notification would still be in the tray.
+    if (claim.daysAgo <= 21) {
+      if (claim.status === "SUBMITTED") {
+        await prisma.notification.create({
+          data: {
+            userId: admin.id,
+            actorId: claimant.id,
+            type: "EXPENSE_SUBMITTED",
+            title: `${claimant.name} claimed ₹${claim.amount.toLocaleString("en-IN")} — ${created.claimNumber}`,
+            body: claim.title,
+            href: `/expenses/${created.id}`,
+            createdAt: submittedAt ?? atHour(filedAt, 18),
+          },
+        });
+      } else if (decided) {
+        await prisma.notification.create({
+          data: {
+            userId: claimant.id,
+            actorId: admin.id,
+            type: claim.status === "REJECTED" ? "EXPENSE_REJECTED" : "EXPENSE_APPROVED",
+            title: `${created.claimNumber} was ${claim.status === "REJECTED" ? "declined" : "approved"}`,
+            body: claim.decisionNote ?? claim.title,
+            readAt: chance(0.4) ? addDays(TODAY, -1) : null,
+            href: `/expenses/${created.id}`,
+            createdAt: decidedAt ?? atHour(filedAt, 18),
+          },
+        });
+      }
+    }
+  }
+
   // --- Summary ------------------------------------------------------------
-  const [users, reports, attendance, leave, notifications] = await Promise.all([
-    prisma.user.count(),
-    prisma.dailyStatusReport.count(),
-    prisma.attendance.count(),
-    prisma.leaveRequest.count(),
-    prisma.notification.count(),
-  ]);
+  const [users, reports, attendance, leave, notifications, claims, claimTotal] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.dailyStatusReport.count(),
+      prisma.attendance.count(),
+      prisma.leaveRequest.count(),
+      prisma.notification.count(),
+      prisma.expenseClaim.count(),
+      prisma.expenseClaim.aggregate({ _sum: { amountMinor: true } }),
+    ]);
 
   console.log(`
 ✓ Seed complete
@@ -659,13 +790,14 @@ async function main() {
   Status reports      ${reports}
   Attendance records  ${attendance}
   Leave requests      ${leave}
+  Expense claims      ${claims}   worth ₹${((claimTotal._sum.amountMinor ?? 0) / 100).toLocaleString("en-IN")}
   Notifications       ${notifications}
   History             ${HISTORY_DAYS} days ending ${dayKey(TODAY)}
 
   Sign in with any of:
-    aisha.khan@cadence.dev     (Admin)
-    rohan.mehta@cadence.dev    (Manager)
-    diya.sharma@cadence.dev    (Employee)
+    anil.gupta@poojamachines.co.in      (Admin — General Manager)
+    harpreet.singh@poojamachines.co.in  (Manager — Production)
+    ramesh.sahu@poojamachines.co.in     (Employee — Senior Fitter)
 
   Password for every demo account: ${DEMO_PASSWORD}
 `);

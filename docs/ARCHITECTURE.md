@@ -1,6 +1,6 @@
 # Architecture
 
-How Cadence is put together, and why the decisions that could reasonably have gone
+How this portal is put together, and why the decisions that could reasonably have gone
 another way went the way they did.
 
 ---

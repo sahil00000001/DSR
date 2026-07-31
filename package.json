@@ -1,8 +1,8 @@
 {
-  "name": "cadence",
+  "name": "pooja-machines-portal",
   "version": "1.0.0",
   "private": true,
-  "description": "Cadence — the operating rhythm for your team. Team Operations Portal (DSR, attendance, leave, analytics).",
+  "description": "Team operations portal for Pooja Machines Private Limited (DSR, attendance, leave, expenses, analytics).",
   "engines": {
     "node": ">=20.11"
   },

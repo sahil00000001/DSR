@@ -9,6 +9,7 @@ import {
   AnnouncementSection,
   ChartsFallback,
   ChartsSection,
+  ExpenseSection,
   LeaveSection,
   PanelFallback,
   RailSection,
@@ -107,6 +108,12 @@ export default async function DashboardPage() {
         <aside className="min-w-0 space-y-5">
           <Suspense fallback={<PanelFallback rows={3} />}>
             <LeaveSection />
+          </Suspense>
+
+          {/* No fallback: the card hides itself when there is nothing to report,
+              and a skeleton for a panel that may not appear is worse than nothing. */}
+          <Suspense fallback={null}>
+            <ExpenseSection />
           </Suspense>
 
           <Suspense fallback={<PanelFallback rows={4} />}>

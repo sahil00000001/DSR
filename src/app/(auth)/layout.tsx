@@ -1,5 +1,6 @@
-import { CalendarCheck, ClipboardCheck, LineChart, Plane } from "lucide-react";
+import { CalendarCheck, ClipboardCheck, Plane, Receipt } from "lucide-react";
 import { BrandLockup } from "@/components/layout/brand";
+import { BRAND } from "@/lib/constants/brand";
 
 const HIGHLIGHTS = [
   {
@@ -18,9 +19,9 @@ const HIGHLIGHTS = [
     body: "Balances update themselves; approvals take one click.",
   },
   {
-    icon: LineChart,
-    title: "Answers, not spreadsheets",
-    body: "Trends, completion rates and department insights, live.",
+    icon: Receipt,
+    title: "Expenses, claimed and tracked",
+    body: "Photograph the bill; follow it through to reimbursement.",
   },
 ];
 
@@ -51,13 +52,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative max-w-md">
           <h2 className="text-[26px] leading-8 font-semibold tracking-[-0.025em] text-fg">
-            The operating rhythm
+            Everything the plant
             <br />
-            for your team.
+            runs on, in one place.
           </h2>
           <p className="mt-3 text-[14px] leading-6 text-fg-muted">
-            Cadence keeps the daily details — reports, attendance, leave — in one place, so the
-            people running the team can spend their time on the work instead of the paperwork.
+            {BRAND.name} keeps the daily details — reports, attendance, leave and expense claims
+            — together, so the people running the shop floor spend their time on the work instead of
+            the paperwork.
           </p>
 
           <ul className="mt-9 space-y-5">
@@ -78,7 +80,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <p className="relative text-[11.5px] text-fg-subtle">
-          © {new Date().getFullYear()} Cadence · Team operations portal
+          © {new Date().getFullYear()} {BRAND.legalName} · Team operations portal
         </p>
       </div>
 

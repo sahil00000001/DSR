@@ -146,6 +146,9 @@ model User {
   auditLogs         AuditLog[]
   sessions          Session[]
   uploads           Attachment[]
+  expenseClaims     ExpenseClaim[]     @relation("ExpenseClaimant")
+  expenseDecisions  ExpenseClaim[]     @relation("ExpenseDecider")
+  expenseComments   ExpenseComment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -402,10 +405,18 @@ model Attachment {
   leaveRequestId String?
   leaveRequest   LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
 
+  expenseClaimId String?
+  expenseClaim   ExpenseClaim? @relation(fields: [expenseClaimId], references: [id], onDelete: Cascade)
+
+  /// Storage object path within the private bucket. Signed on demand for viewing;
+  /// never a public URL.
+  storagePath String?
+
   createdAt DateTime @default(now())
 
   @@index([dsrId])
   @@index([leaveRequestId])
+  @@index([expenseClaimId])
 }
 
 model AuditLog {
@@ -427,4 +438,89 @@ model AuditLog {
   @@index([createdAt])
   @@index([actorId])
   @@index([entity, entityId])
+}
+
+// ---------------------------------------------------------------------------
+//  Expense claims
+// ---------------------------------------------------------------------------
+
+/// An expense an employee paid for and wants reimbursed.
+///
+/// Status flow: DRAFT → SUBMITTED → APPROVED → REIMBURSED
+///                              ↘ REJECTED
+///              (CANCELLED from DRAFT or SUBMITTED, by the claimant)
+///
+/// Amounts are stored in paise/cents as an Int, never as a Float. A Float cannot
+/// represent 1234.55 exactly, and money that fails to sum correctly is worse than
+/// no feature at all. Formatting back to rupees happens at the display boundary.
+model ExpenseClaim {
+  id String @id @default(cuid())
+
+  /// Human reference shown to people and quoted in emails, e.g. "EXP-0042".
+  claimNumber String @unique
+
+  userId String
+  user   User   @relation("ExpenseClaimant", fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String
+
+  /// TRAVEL | FUEL | FREIGHT | TOOLS | MATERIALS | MEALS | LODGING | REPAIRS | OFFICE | OTHER
+  category String
+
+  /// Minor units (paise). ₹1,234.55 is stored as 123455.
+  amountMinor Int
+  currency    String @default("INR")
+
+  /// The day the money was spent — normalised to UTC midnight like every other
+  /// calendar day in this schema.
+  expenseDate DateTime
+
+  /// Who was paid, and the bill/invoice number, so finance can match it.
+  vendor      String?
+  referenceNo String?
+
+  status      String    @default("DRAFT")
+  submittedAt DateTime?
+
+  decidedById  String?
+  decidedBy    User?     @relation("ExpenseDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?
+  decisionNote String?
+
+  /// Set when finance has actually paid it out.
+  reimbursedAt DateTime?
+
+  attachments Attachment[]
+  comments    ExpenseComment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([expenseDate])
+  @@index([userId, status])
+  @@index([category])
+}
+
+/// Conversation on a claim.
+///
+/// The decision note records the verdict; this records the back-and-forth that
+/// reaches it ("which vehicle was this for?"). Keeping them separate means the
+/// audit answer to "why was this approved" stays a single field rather than
+/// something you reconstruct from a thread.
+model ExpenseComment {
+  id      String       @id @default(cuid())
+  claimId String
+  claim   ExpenseClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  body String
+
+  createdAt DateTime @default(now())
+
+  @@index([claimId, createdAt])
 }

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth/session";
 import { isManagerOrAdmin } from "@/lib/auth/rbac";
 import { getDashboardData } from "@/lib/services/analytics";
 import { getLeaveBalances, listMyLeave } from "@/lib/services/leave";
+import { countClaimsAwaitingDecision, getExpenseSnapshot } from "@/lib/services/expenses";
 import { getDsrForDate } from "@/lib/services/dsr";
 import { getTodayAttendance } from "@/lib/services/attendance";
 import { getUpcoming } from "@/lib/services/calendar";
@@ -14,6 +15,7 @@ import { getNavCounts, getReportStreak } from "@/lib/services/shell";
 import { formatDayLong, formatDayRange, today } from "@/lib/utils/date";
 import { firstName, formatHours, formatPercent } from "@/lib/utils/format";
 import { TodayCard } from "@/components/dashboard/today-card";
+import { ExpenseCard } from "@/components/dashboard/expense-card";
 import {
   ActivityFeedCard,
   AnnouncementBanner,
@@ -115,6 +117,29 @@ export async function LeaveSection() {
     .reduce((sum, request) => sum + request.days, 0);
 
   return <LeaveBalanceCard balances={balances} pendingCount={pendingDays} />;
+}
+
+export async function ExpenseSection() {
+  const user = await requireUser();
+
+  const [snapshot, awaitingDecision] = await Promise.all([
+    getExpenseSnapshot(user.id),
+    countClaimsAwaitingDecision(user),
+  ]);
+
+  // Nothing filed and nothing to decide: the card would be a permanent empty
+  // prompt, so it isn't rendered at all until there's something to say.
+  if (
+    snapshot.awaitingCount === 0 &&
+    snapshot.approvedCount === 0 &&
+    snapshot.draftCount === 0 &&
+    snapshot.reimbursedMinor === 0 &&
+    awaitingDecision === 0
+  ) {
+    return null;
+  }
+
+  return <ExpenseCard snapshot={snapshot} awaitingDecision={awaitingDecision} />;
 }
 
 export async function UpcomingSection() {

@@ -11,6 +11,7 @@ import {
   FileText,
   Plane,
   Plus,
+  Receipt,
   Search,
   Users,
 } from "lucide-react";
@@ -76,6 +77,14 @@ const QUICK_ACTIONS: PaletteItem[] = [
     icon: <Plane className="size-4" />,
     href: "/leave/new",
     keywords: "holiday time off apply sick casual",
+  },
+  {
+    id: "action-expense",
+    group: "Actions",
+    label: "File an expense claim",
+    icon: <Receipt className="size-4" />,
+    href: "/expenses/new",
+    keywords: "claim reimburse bill receipt money spent travel fuel",
   },
   {
     id: "action-attendance",

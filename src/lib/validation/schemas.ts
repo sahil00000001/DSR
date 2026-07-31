@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ANNOUNCEMENT_AUDIENCES,
+  EXPENSE_CATEGORIES,
   ATTENDANCE_STATUSES,
   DEPARTMENT_COLORS,
   HOLIDAY_TYPES,
@@ -437,3 +438,64 @@ export function parseSearchParams<S extends z.ZodTypeAny>(
   // Filters must degrade gracefully: a hand-edited URL shows defaults, not a crash.
   return result.success ? result.data : schema.parse({});
 }
+
+// ---------------------------------------------------------------------------
+//  Expense claims
+// ---------------------------------------------------------------------------
+
+/**
+ * Amount is validated as the string a person typed and converted to minor units
+ * in the action, so the error message can talk about what they wrote rather than
+ * about paise.
+ */
+export const expenseClaimSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(4, "Give the claim a short title, e.g. “Taxi to Ludhiana dealer”.")
+    .max(140, "Keep the title under 140 characters."),
+  description: z
+    .string()
+    .trim()
+    .min(10, "Explain what this was for — an admin has to justify paying it.")
+    .max(4000, "Keep the description under 4000 characters."),
+  category: z.enum(EXPENSE_CATEGORIES),
+  amount: z
+    .string()
+    .trim()
+    .min(1, "Enter the amount you paid."),
+  expenseDate: dayKey,
+  vendor: optionalText(140),
+  referenceNo: optionalText(60),
+  /** DRAFT keeps it private; SUBMITTED sends it for approval. */
+  intent: z.enum(["DRAFT", "SUBMITTED"]),
+});
+
+export const expenseDecisionSchema = z.object({
+  id: z.string().min(1),
+  decision: z.enum(["APPROVED", "REJECTED"]),
+  note: optionalText(1000),
+});
+
+export const expenseCommentSchema = z.object({
+  claimId: z.string().min(1),
+  body: z
+    .string()
+    .trim()
+    .min(2, "Write something before sending.")
+    .max(2000, "Keep it under 2000 characters."),
+});
+
+export const expenseFilterSchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: csvList,
+  category: csvList,
+  department: csvList,
+  employee: csvList,
+  from: dayKey.optional(),
+  to: dayKey.optional(),
+  page: z.coerce.number().int().min(1).max(10_000).optional(),
+  size: z.coerce.number().int().min(10).max(200).optional(),
+});
+
+export type ExpenseFilterInput = z.infer<typeof expenseFilterSchema>;

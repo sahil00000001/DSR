@@ -24,8 +24,12 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const request = await getLeaveById(id);
+  // Authorised: `generateMetadata` runs independently of the page component, so the
+  // `notFound()` below does not prevent the title being computed and sent. Both
+  // reads are `cache()`d per request.
+  const [user, request] = await Promise.all([requireUser(), getLeaveById(id)]);
   if (!request) return { title: "Request not found" };
+  if (!can.viewLeave(user, { id: request.user.id })) return { title: "Request not found" };
   return {
     title: `${request.user.name} — ${LEAVE_TYPE_LABEL[request.type]}`,
   };

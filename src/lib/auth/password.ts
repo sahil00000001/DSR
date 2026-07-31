@@ -94,7 +94,7 @@ export function needsRehash(stored: string): boolean {
  * and that timing difference alone enumerates valid accounts.
  */
 export async function fakeVerify(): Promise<void> {
-  await scrypt("cadence-timing-equaliser", randomBytes(SALT_LENGTH), KEY_LENGTH, {
+  await scrypt("pmpl-timing-equaliser", randomBytes(SALT_LENGTH), KEY_LENGTH, {
     N,
     r: R,
     p: P,

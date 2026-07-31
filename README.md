@@ -1,9 +1,10 @@
-# Cadence
+# Pooja Machines — Team Operations Portal
 
-**The operating rhythm for your team.**
+**Everything the plant runs on, in one place.**
 
-A team operations portal for a 15–20 person company: daily status reports,
-attendance, leave, a people directory, and the analytics that come out of them.
+The internal operations portal for **Pooja Machines Private Limited**, a
+manufacturer of sewing machines and fans: daily status reports, attendance, leave,
+expense claims, a people directory, and the analytics that come out of them.
 
 Built as a production application rather than a prototype — real authentication,
 role-based authorisation enforced server-side, transactional business rules, an
@@ -36,11 +37,11 @@ The seed creates 20 employees. Three of them cover the three access levels:
 
 | Email | Role | What they see |
 | --- | --- | --- |
-| `aisha.khan@cadence.dev` | Admin | Everything: people, approvals, analytics, audit log, settings |
-| `rohan.mehta@cadence.dev` | Manager | Reviews reports and approves leave for their own reporting line |
-| `diya.sharma@cadence.dev` | Employee | Their own reports, attendance and leave |
+| `anil.gupta@poojamachines.co.in` | Admin | Everything: people, approvals, expense decisions, analytics, audit log, settings |
+| `harpreet.singh@poojamachines.co.in` | Manager | Reviews reports and approves leave for their own reporting line |
+| `ramesh.sahu@poojamachines.co.in` | Employee | Their own reports, attendance, leave and expense claims |
 
-Password for every demo account: **`Cadence#2026`**
+Password for every demo account: **`Pooja@Machines26`**
 
 The sign-in screen lists these while `NEXT_PUBLIC_DEMO_MODE="true"`. Set it to
 `false` for any real installation.

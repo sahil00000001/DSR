@@ -67,6 +67,35 @@ export const can = {
   cancelLeave: (actor: Actor, subject: Subject, status: string) =>
     (isSelf(actor, subject) && status === "PENDING") || isAdmin(actor),
 
+  // --- Expense claims ------------------------------------------------------
+
+  submitExpense: (_actor: Actor) => true,
+
+  /**
+   * Read a claim: your own, one from your reporting line, or any as an admin.
+   * Managers get read access for context even though they don't decide — "has my
+   * fitter already claimed this?" is a fair question.
+   */
+  viewExpense: (actor: Actor, subject: Subject) =>
+    isSelf(actor, subject) || isAdmin(actor) || (isManager(actor) && reportsTo(actor, subject)),
+
+  /**
+   * Approve, decline or mark reimbursed — admins only, and never your own claim.
+   * Money leaving the company is a finance decision, and self-approval is not one.
+   */
+  decideExpense: (actor: Actor, subject: Subject) => isAdmin(actor) && !isSelf(actor, subject),
+
+  /** Edit is only ever possible while a claim is still a private draft. */
+  editExpense: (actor: Actor, subject: Subject, status: string) =>
+    isSelf(actor, subject) && status === "DRAFT",
+
+  /** Withdraw your own claim while it is still open. */
+  cancelExpense: (actor: Actor, subject: Subject, status: string) =>
+    (isSelf(actor, subject) && (status === "DRAFT" || status === "SUBMITTED")) || isAdmin(actor),
+
+  /** The admin review queue. */
+  viewExpenseQueue: (actor: Actor) => isAdmin(actor),
+
   // --- Attendance ----------------------------------------------------------
 
   markOwnAttendance: (_actor: Actor) => true,
