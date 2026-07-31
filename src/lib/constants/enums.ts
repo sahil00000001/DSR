@@ -188,6 +188,15 @@ export const NOTIFICATION_TYPES = [
   "EXPENSE_REJECTED",
   "EXPENSE_REIMBURSED",
   "EXPENSE_COMMENT",
+  "TASK_ASSIGNED",
+  "TASK_UPDATED",
+  "TASK_MENTION",
+  "TASK_ATTACHMENT",
+  "TASK_DUE_SOON",
+  "TASK_OVERDUE",
+  "TASK_DEADLINE_CHANGED",
+  "TASK_COMPLETED",
+  "TASK_BLOCKED",
   "ANNOUNCEMENT",
   "MENTION",
   "SYSTEM",
@@ -364,3 +373,211 @@ export function asExpenseCategory(value: string): ExpenseCategory {
     ? (value as ExpenseCategory)
     : "OTHER";
 }
+
+// ---------------------------------------------------------------------------
+//  Tasks
+// ---------------------------------------------------------------------------
+
+export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  CRITICAL: "Critical",
+};
+
+export const TASK_PRIORITY_TONE = {
+  LOW: "neutral",
+  MEDIUM: "info",
+  HIGH: "warning",
+  CRITICAL: "danger",
+} as const;
+
+/** Sort weight — higher is more urgent. Used to order boards and digests. */
+export const TASK_PRIORITY_WEIGHT: Record<TaskPriority, number> = {
+  CRITICAL: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
+export const TASK_STATUSES = [
+  "TODO",
+  "IN_PROGRESS",
+  "REVIEW",
+  "COMPLETED",
+  "BLOCKED",
+] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  TODO: "To do",
+  IN_PROGRESS: "In progress",
+  REVIEW: "In review",
+  COMPLETED: "Completed",
+  BLOCKED: "Blocked",
+};
+
+export const TASK_STATUS_TONE = {
+  TODO: "neutral",
+  IN_PROGRESS: "info",
+  REVIEW: "accent",
+  COMPLETED: "success",
+  BLOCKED: "danger",
+} as const;
+
+/** What the assignee should expect next, shown on the task itself. */
+export const TASK_STATUS_MEANING: Record<TaskStatus, string> = {
+  TODO: "Not started yet.",
+  IN_PROGRESS: "Being worked on.",
+  REVIEW: "Finished and waiting on a check before it counts as done.",
+  COMPLETED: "Done. Nothing further needed.",
+  BLOCKED: "Stopped by something outside this task — see the reason.",
+};
+
+/**
+ * Column order on the Kanban board.
+ *
+ * BLOCKED sits last rather than between REVIEW and COMPLETED: it is a siding, not a
+ * step on the way, and putting it in the middle implies work flows through it.
+ */
+export const TASK_BOARD_ORDER = [
+  "TODO",
+  "IN_PROGRESS",
+  "REVIEW",
+  "COMPLETED",
+  "BLOCKED",
+] as const satisfies readonly TaskStatus[];
+
+/** Statuses that still represent outstanding work. */
+export const TASK_OPEN_STATUSES = [
+  "TODO",
+  "IN_PROGRESS",
+  "REVIEW",
+  "BLOCKED",
+] as const satisfies readonly TaskStatus[];
+
+/** Progress implied by a status, when nobody has set a figure explicitly. */
+export const TASK_STATUS_PROGRESS: Record<TaskStatus, number> = {
+  TODO: 0,
+  IN_PROGRESS: 25,
+  REVIEW: 90,
+  COMPLETED: 100,
+  BLOCKED: 0,
+};
+
+export const TASK_RECURRENCES = ["NONE", "DAILY", "WEEKLY", "MONTHLY"] as const;
+export type TaskRecurrence = (typeof TASK_RECURRENCES)[number];
+
+export const TASK_RECURRENCE_LABEL: Record<TaskRecurrence, string> = {
+  NONE: "Does not repeat",
+  DAILY: "Daily",
+  WEEKLY: "Weekly",
+  MONTHLY: "Monthly",
+};
+
+/**
+ * Timeline entry kinds.
+ *
+ * Deliberately finer-grained than the status field: "due date moved" and "reassigned"
+ * are different questions after the fact, and collapsing both into "edited" is how a
+ * timeline stops answering them.
+ */
+export const TASK_ACTIVITY_KINDS = [
+  "created",
+  "assigned",
+  "unassigned",
+  "status_changed",
+  "priority_changed",
+  "progress_changed",
+  "due_date_changed",
+  "commented",
+  "attachment_added",
+  "attachment_removed",
+  "recording_added",
+  "tag_added",
+  "tag_removed",
+  "checklist_added",
+  "checklist_completed",
+  "dependency_added",
+  "dependency_removed",
+  "completed",
+  "reopened",
+  "blocked",
+  "unblocked",
+  "edited",
+  "spawned",
+] as const;
+export type TaskActivityKind = (typeof TASK_ACTIVITY_KINDS)[number];
+
+/** Verb shown in the timeline. The actor's name is prefixed by the component. */
+export const TASK_ACTIVITY_LABEL: Record<TaskActivityKind, string> = {
+  created: "created this task",
+  assigned: "assigned it",
+  unassigned: "removed an assignee",
+  status_changed: "changed the status",
+  priority_changed: "changed the priority",
+  progress_changed: "updated progress",
+  due_date_changed: "changed the due date",
+  commented: "posted an update",
+  attachment_added: "attached a file",
+  attachment_removed: "removed a file",
+  recording_added: "added a recording",
+  tag_added: "added a tag",
+  tag_removed: "removed a tag",
+  checklist_added: "added checklist items",
+  checklist_completed: "ticked a checklist item",
+  dependency_added: "added a dependency",
+  dependency_removed: "removed a dependency",
+  completed: "marked it complete",
+  reopened: "reopened it",
+  blocked: "marked it blocked",
+  unblocked: "unblocked it",
+  edited: "edited the details",
+  spawned: "was created by a repeating schedule",
+};
+
+export function asTaskStatus(value: string): TaskStatus {
+  return (TASK_STATUSES as readonly string[]).includes(value) ? (value as TaskStatus) : "TODO";
+}
+
+export function asTaskPriority(value: string): TaskPriority {
+  return (TASK_PRIORITIES as readonly string[]).includes(value)
+    ? (value as TaskPriority)
+    : "MEDIUM";
+}
+
+export function asTaskRecurrence(value: string): TaskRecurrence {
+  return (TASK_RECURRENCES as readonly string[]).includes(value)
+    ? (value as TaskRecurrence)
+    : "NONE";
+}
+
+export function asTaskActivityKind(value: string): TaskActivityKind {
+  return (TASK_ACTIVITY_KINDS as readonly string[]).includes(value)
+    ? (value as TaskActivityKind)
+    : "edited";
+}
+
+/**
+ * Seed tag vocabulary from section 6 of the brief.
+ *
+ * A starting set rather than a closed one — tags are rows, and an admin can add
+ * "Painting" or "Tool room" without a deployment.
+ */
+export const DEFAULT_TASK_TAGS = [
+  { name: "Backend", color: "indigo" },
+  { name: "Frontend", color: "violet" },
+  { name: "Bug", color: "rose" },
+  { name: "Security", color: "amber" },
+  { name: "Documentation", color: "teal" },
+  { name: "Blocked", color: "rose" },
+  { name: "Urgent", color: "amber" },
+  { name: "Production", color: "indigo" },
+  { name: "Quality", color: "violet" },
+  { name: "Maintenance", color: "sky" },
+  { name: "Dispatch", color: "teal" },
+  { name: "Safety", color: "rose" },
+] as const;
