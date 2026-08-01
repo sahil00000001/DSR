@@ -156,6 +156,8 @@ model User {
   taskMentions      TaskMention[]       @relation("TaskMentioned")
   taskActivities    TaskActivity[]      @relation("TaskActivityActor")
   checklistDone     TaskChecklistItem[] @relation("ChecklistCompleter")
+  ordersCreated     Order[]             @relation("OrderCreator")
+  orderActivities   OrderActivity[]     @relation("OrderActivityActor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -593,6 +595,18 @@ model Task {
   createdById String
   createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
+  // --- Order stage ---------------------------------------------------------
+  /// Set when this task is a stage of a customer order. The three fields travel
+  /// together: an order stage is a task that knows its place in a sequence and how
+  /// long it was given.
+  orderId       String?
+  order         Order?  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Position in the order's sequence, 1-based.
+  orderPosition Int?
+  /// Working days this stage was allotted. The projection engine compares it to the
+  /// time actually used.
+  allottedDays  Int?
+
   startedAt   DateTime?
   completedAt DateTime?
   /// Set when a completed task is reopened, so "was this ever finished?" survives.
@@ -644,6 +658,7 @@ model Task {
   @@index([categoryId])
   @@index([status, dueOn])
   @@index([recurrence])
+  @@index([orderId, orderPosition])
 }
 
 /// Grouping for tasks — a project, a line, or a workstream.
@@ -854,4 +869,164 @@ model TaskDependency {
 
   @@unique([blockerId, dependentId])
   @@index([dependentId])
+}
+
+// ---------------------------------------------------------------------------
+//  Orders
+// ---------------------------------------------------------------------------
+
+/// A customer order, delivered by a sequence of tasks.
+///
+/// ## Why an order is not just a task with subtasks
+///
+/// An order carries a **promise to somebody outside the company** — a date the dealer
+/// was given. Tasks carry due dates, but a due date is internal and movable; a
+/// promised date is the thing that gets broken. Everything here exists to answer one
+/// question the works manager asked for: *will this be late, and who is holding it up,
+/// while there is still time to act.*
+///
+/// ## The stages ARE tasks
+///
+/// `Task.orderId` + `orderPosition` + `allottedDays` turn the existing task into an
+/// order stage. That is deliberate rather than convenient: an order stage needs
+/// updates, photos, voice notes, a timeline and notifications, and all of that already
+/// exists on `Task`. A parallel `OrderStage` model would have re-earned every one of
+/// them badly.
+///
+/// ## Projection is cached, not computed on read
+///
+/// `projectedOn` and `slipDays` are written by the projection engine on every task
+/// mutation and re-swept nightly by the cron. They are cached because the list page
+/// sorts and filters by slip — recomputing across every order on every request would
+/// turn one page load into a fan-out over every stage of every order. The engine is
+/// pure and lives in `lib/orders/projection.ts`, so the cache can always be rebuilt.
+model Order {
+  id String @id @default(cuid())
+
+  /// Human reference quoted to the dealer and in WhatsApp, e.g. "ORD-0042".
+  orderNumber String @unique
+
+  title        String
+  /// The dealer or customer this was promised to.
+  customerName String
+  /// Their purchase-order or reference number, for matching paperwork.
+  customerRef  String?
+  description  String?
+
+  /// What is being made, and how many.
+  product  String?
+  quantity Int?
+
+  /// LOW | MEDIUM | HIGH | CRITICAL — same vocabulary as tasks.
+  priority String @default("MEDIUM")
+
+  /// PENDING | IN_PROGRESS | AT_RISK | DELAYED | COMPLETED | CANCELLED
+  ///
+  /// AT_RISK and DELAYED are *derived* by the projection engine, never set by hand:
+  /// AT_RISK means the forecast finish is past the promise while there is still time,
+  /// DELAYED means the promise date has already gone. Letting someone set them
+  /// manually would make the forecast advisory, which is the opposite of the point.
+  status String @default("PENDING")
+
+  /// Calendar days, UTC midnight, like every other date in this schema.
+  startedOn   DateTime?
+  /// The date the customer was given. Required — an order without one cannot breach,
+  /// and an order that cannot breach is a project, not an order.
+  promisedOn  DateTime
+  completedOn DateTime?
+
+  // --- Projection cache ----------------------------------------------------
+  /// Forecast finish, from actual time used plus allotted time still to come.
+  projectedOn DateTime?
+  /// Working days late the forecast is. Negative means ahead of the promise.
+  slipDays    Int       @default(0)
+  /// When the projection was last recomputed, so a stale cache is visible.
+  projectedAt DateTime?
+
+  createdById String
+  createdBy   User   @relation("OrderCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  /// Set when the at-risk warning was sent, so the cron does not repeat it.
+  riskNotifiedAt DateTime?
+
+  /// The stages, in sequence.
+  stages     Task[]
+  activities OrderActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([promisedOn])
+  @@index([slipDays])
+  @@index([status, promisedOn])
+  @@index([customerName])
+}
+
+/// Order-level events, for the feed on the orders page.
+///
+/// Task-level events stay in `TaskActivity`; the read layer merges the two so an
+/// order's history reads as one story. Kept separate because "the promised date moved"
+/// belongs to the order, not to any one stage of it.
+model OrderActivity {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User?   @relation("OrderActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// See ORDER_ACTIVITY_KINDS in enums.ts.
+  kind String
+
+  /// JSON detail — the from/to of a promised-date change, the slip at the time, and
+  /// so on.
+  meta    String?
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+/// A message sent out through WhatsApp (or whichever channel is configured).
+///
+/// ## Why this is logged at all
+///
+/// The configured channel is a self-hosted, unofficial WhatsApp gateway. It will drop
+/// messages — the session expires, the container restarts, the number gets rate
+/// limited. Without a log, "the admin says he never got the 6pm summary" is
+/// unanswerable. With one, it is a row with a status and an error string.
+///
+/// It also makes the digest idempotent: the cron checks whether today's summary
+/// already went out before sending another.
+model MessageLog {
+  id String @id @default(cuid())
+
+  /// openwa | cloud | telegram | none
+  provider String
+  /// digest | order_risk | order_delayed | order_complete | stage_done | inbound_reply
+  kind     String
+
+  /// The recipient, as the provider addresses it (a wa.me chat id, a chat id, …).
+  recipient String
+  body      String
+
+  /// QUEUED | SENT | FAILED
+  status String  @default("QUEUED")
+  error  String?
+
+  /// The provider's own message id, where it returns one.
+  externalId String?
+
+  /// The calendar day this covers, for the daily digest. Unique per kind and day, so
+  /// the same digest cannot be sent twice.
+  coversDay DateTime?
+
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([kind, coversDay])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -56,6 +56,13 @@ export type AuditAction =
   | "task.spawn"
   | "task.category"
   | "task.tag"
+  | "order.create"
+  | "order.update"
+  | "order.stage"
+  | "order.promise"
+  | "order.deliver"
+  | "order.cancel"
+  | "message.send"
   | "employee.create"
   | "employee.update"
   | "employee.disable"
@@ -257,6 +264,13 @@ export function describeAudit(entry: AuditEntry): string {
     "task.spawn": "created a repeating task occurrence",
     "task.category": "changed the task categories",
     "task.tag": "changed the task tags",
+    "order.create": "created an order",
+    "order.update": "edited an order",
+    "order.stage": "changed an order stage",
+    "order.promise": "moved a promised delivery date",
+    "order.deliver": "marked an order delivered",
+    "order.cancel": "cancelled an order",
+    "message.send": "sent an outbound message",
     "employee.create": "added an employee",
     "employee.update": "updated an employee",
     "employee.disable": "disabled an employee",
