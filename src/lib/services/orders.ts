@@ -128,7 +128,17 @@ export interface OrderDto {
     stageCompletion: number;
     weightedProgress: number;
     currentStageName: string | null;
+    /**
+     * Historical. Includes finished stages that ran over, because they are the reason the
+     * order is behind. Never use it to answer "what is it waiting on".
+     */
     bottleneckNames: string[];
+    /** The stage genuinely holding the order up, and who owns it. */
+    holdingUpName: string | null;
+    holdingUpOwner: string | null;
+    holdingUpIsLate: boolean;
+    /** Something is stopped, so the forecast above is not one. Branch on this first. */
+    isStopped: boolean;
     /** One sentence, phrased identically in the UI, the email and WhatsApp. */
     summary: string;
   };
@@ -217,6 +227,10 @@ function toDto(row: RawOrder, holidays: ReadonlySet<string>, asOf: Date): OrderD
       weightedProgress: projection.weightedProgress,
       currentStageName: projection.currentStage?.name ?? null,
       bottleneckNames: projection.bottlenecks.map((stage) => stage.name),
+      holdingUpName: projection.holdingUp?.name ?? null,
+      holdingUpOwner: projection.holdingUp?.assignees[0]?.name.split(" ")[0] ?? null,
+      holdingUpIsLate: projection.holdingUpIsLate,
+      isStopped: projection.isStopped,
       summary: explainProjection(projection),
     },
   };
@@ -474,6 +488,102 @@ export async function getOrderFeed(orderId: string, limit = 40): Promise<OrderAc
   return merged
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, limit);
+}
+
+/**
+ * Feeds for many orders at once.
+ *
+ * The list page shows a few recent entries under every row, and calling `getOrderFeed` per
+ * row meant **two queries per order** — forty on a twenty-order page, four hundred at the
+ * 200 cap. Two queries total instead, grouped in memory.
+ *
+ * `perOrder` is applied after grouping rather than in SQL, because "the newest four per
+ * order" is a window function Prisma cannot express. Bounded by taking a generous slice of
+ * the most recent rows across the whole set, which is correct here: the page only ever
+ * shows recent activity, and an order with nothing recent shows nothing.
+ */
+export async function getOrderFeeds(
+  orderIds: string[],
+  perOrder = 4,
+): Promise<Map<string, OrderActivityDto[]>> {
+  const byOrder = new Map<string, OrderActivityDto[]>();
+  if (orderIds.length === 0) return byOrder;
+
+  // Enough rows that every order gets its quota even when one is very chatty.
+  const ceiling = Math.min(2000, orderIds.length * perOrder * 4);
+
+  const [events, updates] = await Promise.all([
+    prisma.orderActivity.findMany({
+      where: { orderId: { in: orderIds } },
+      orderBy: { createdAt: "desc" },
+      take: ceiling,
+      select: {
+        id: true,
+        orderId: true,
+        kind: true,
+        meta: true,
+        comment: true,
+        createdAt: true,
+        actor: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    }),
+    prisma.taskUpdate.findMany({
+      where: { task: { orderId: { in: orderIds } } },
+      orderBy: { createdAt: "desc" },
+      take: ceiling,
+      select: {
+        id: true,
+        body: true,
+        progressPercent: true,
+        createdAt: true,
+        author: { select: { id: true, name: true, avatarUrl: true } },
+        task: { select: { id: true, title: true, orderId: true } },
+      },
+    }),
+  ]);
+
+  const push = (orderId: string, entry: OrderActivityDto) => {
+    byOrder.set(orderId, [...(byOrder.get(orderId) ?? []), entry]);
+  };
+
+  for (const event of events) {
+    const kind = asOrderActivityKind(event.kind);
+    push(event.orderId, {
+      id: event.id,
+      kind,
+      text: describeOrderEvent(kind, event.meta),
+      comment: event.comment,
+      createdAt: event.createdAt,
+      actor: event.actor,
+      stage: null,
+    });
+  }
+
+  for (const update of updates) {
+    if (!update.task.orderId) continue;
+    push(update.task.orderId, {
+      id: update.id,
+      kind: "task",
+      text:
+        update.progressPercent !== null
+          ? `posted an update on ${update.task.title} (${update.progressPercent}%)`
+          : `posted an update on ${update.task.title}`,
+      comment: update.body,
+      createdAt: update.createdAt,
+      actor: update.author,
+      stage: { id: update.task.id, name: update.task.title },
+    });
+  }
+
+  // Interleave the two sources per order, then trim.
+  for (const [orderId, entries] of byOrder) {
+    byOrder.set(
+      orderId,
+      entries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, perOrder),
+    );
+  }
+
+  return byOrder;
 }
 
 /** The sentence for an order-level event, built from its recorded detail. */

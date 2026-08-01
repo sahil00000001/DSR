@@ -64,8 +64,21 @@ export function OrderRow({
   const behind = projection.derivedStatus === "AT_RISK" || projection.derivedStatus === "DELAYED";
   const late = projection.derivedStatus === "DELAYED";
 
+  /**
+   * Blocked, so there is no forecast to show.
+   *
+   * This row used to read "At risk · 6d spare" — two true numbers making a false claim,
+   * because the arithmetic can only assume a stopped stage still needs the rest of its
+   * allowance. The projection decides it now, so the row, the email and the WhatsApp
+   * summary cannot drift apart on the question.
+   */
+  const stopped = projection.isStopped;
+
   return (
     <article
+      /* Drives the severity pulse in globals.css. Admin surfaces only — the CSS is
+         scoped to [data-role="ADMIN"], so an employee sees a static card. */
+      data-severity={late ? "late" : projection.derivedStatus === "AT_RISK" ? "at-risk" : undefined}
       className={cn(
         "overflow-hidden rounded-xl border bg-surface transition-colors",
         late
@@ -123,7 +136,7 @@ export function OrderRow({
                   "inline-flex items-center gap-1 font-medium",
                   late
                     ? "text-danger-text"
-                    : projection.slipDays > 0
+                    : projection.slipDays > 0 || stopped
                       ? "text-warning-text"
                       : "text-success-text",
                 )}
@@ -133,22 +146,33 @@ export function OrderRow({
                 ) : (
                   <Check className="size-3 shrink-0" aria-hidden="true" />
                 )}
-                {projection.slipDays > 0
-                  ? `Forecast ${formatDayShort(projection.projectedOn)} · ${projection.slipDays}d late`
-                  : projection.slipDays < 0
-                    ? `Forecast ${formatDayShort(projection.projectedOn)} · ${Math.abs(projection.slipDays)}d spare`
-                    : `Forecast ${formatDayShort(projection.projectedOn)} · on the date`}
+                {stopped
+                  ? "Stopped · no finish date"
+                  : projection.slipDays > 0
+                    ? `Forecast ${formatDayShort(projection.projectedOn)} · ${projection.slipDays}d late`
+                    : projection.slipDays < 0
+                      ? `Forecast ${formatDayShort(projection.projectedOn)} · ${Math.abs(projection.slipDays)}d spare`
+                      : `Forecast ${formatDayShort(projection.projectedOn)} · on the date`}
               </span>
             ) : (
               <span className="text-fg-subtle">No stages yet</span>
             )}
 
-            {projection.currentStageName ? (
-              <span className="inline-flex items-center gap-1 text-fg-subtle">
+            {/* `holdingUp`, not `bottleneckNames` — the latter includes finished stages that
+                overran, which had this row telling you an order was "stuck on" a stage that
+                was already complete. */}
+            {projection.holdingUpName ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  projection.holdingUpIsLate ? "text-warning-text" : "text-fg-subtle",
+                )}
+              >
                 <CircleDot className="size-3 shrink-0" aria-hidden="true" />
-                {projection.bottleneckNames[0]
-                  ? `Stuck on ${projection.bottleneckNames[0]}`
-                  : `On ${projection.currentStageName}`}
+                {projection.holdingUpIsLate
+                  ? `Stuck on ${projection.holdingUpName}`
+                  : `On ${projection.holdingUpName}`}
+                {projection.holdingUpOwner ? ` · ${projection.holdingUpOwner}` : ""}
               </span>
             ) : null}
           </div>
@@ -190,13 +214,13 @@ export function OrderRow({
       </button>
 
       {open ? (
-        <div className="border-t border-border bg-surface-inset/40 px-3.5 py-3">
+        <div data-expandable className="border-t border-border bg-surface-inset/40 px-3.5 py-3">
           <p
             className={cn(
               "mb-3 rounded-lg px-2.5 py-1.5 text-[12px] leading-[17px]",
               late
                 ? "bg-danger-soft/50 text-danger-text"
-                : projection.slipDays > 0
+                : projection.slipDays > 0 || stopped
                   ? "bg-warning-soft/50 text-warning-text"
                   : "bg-surface text-fg-muted",
             )}

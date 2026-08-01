@@ -147,9 +147,13 @@ async function alertNewRisk(order: OrderDto): Promise<void> {
         userId,
         actorId: null,
         type: "TASK_OVERDUE" as const,
-        title: `${order.orderNumber} is forecast ${order.projection.slipDays} day${
-          order.projection.slipDays === 1 ? "" : "s"
-        } late`,
+        /* A block is why an order goes at-risk with no arithmetic slip, and this then
+           read "forecast 0 days late" — which is both wrong and easy to ignore. */
+        title: order.projection.isStopped
+          ? `${order.orderNumber} is stopped — no finish date`
+          : `${order.orderNumber} is forecast ${order.projection.slipDays} day${
+              order.projection.slipDays === 1 ? "" : "s"
+            } late`,
         body: order.projection.summary,
         href: `/orders/${order.id}`,
       })),

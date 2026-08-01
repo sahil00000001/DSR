@@ -14,7 +14,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/lib/auth/session";
 import { can, isAdmin } from "@/lib/auth/rbac";
-import { getOrderFeed, listOrders } from "@/lib/services/orders";
+import { getOrderFeeds, listOrders } from "@/lib/services/orders";
 import { orderFilterSchema, parseSearchParams } from "@/lib/validation/schemas";
 import { env, isMessagingEnabled } from "@/lib/env";
 import { OrderRow } from "@/components/orders/order-row";
@@ -51,12 +51,21 @@ export default async function OrdersPage({
 
   const { rows, summary } = await listOrders({ ...raw, scope }, user);
 
-  // Feeds for every row, in parallel. Expanding a row must not cost a round trip.
-  const feeds = await Promise.all(rows.map((order) => getOrderFeed(order.id, 4)));
+  /**
+   * Feeds for every row in two queries, not two per row.
+   *
+   * Expanding a row must not cost a round trip, so the activity is loaded with the page.
+   * Doing that per order meant 2 × 200 queries at the cap; `getOrderFeeds` batches it.
+   */
+  const feeds = await getOrderFeeds(
+    rows.map((order) => order.id),
+    4,
+  );
+
   const feedByOrder = new Map(
-    rows.map((order, index) => [
+    rows.map((order) => [
       order.id,
-      feeds[index]!.map((entry) => ({
+      (feeds.get(order.id) ?? []).map((entry) => ({
         id: entry.id,
         text: entry.text,
         comment: entry.comment,
@@ -94,7 +103,7 @@ export default async function OrdersPage({
       />
 
       {/* Four numbers. Deliberately not StatCards — this page is meant to be dense. */}
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-stagger>
         <Tile label="Open" value={summary.open} />
         <Tile
           label="At risk"
@@ -180,14 +189,20 @@ export default async function OrdersPage({
           }
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" data-stagger>
           {rows.map((order, index) => (
             <OrderRow
               key={order.id}
               order={order}
               feed={feedByOrder.get(order.id)}
-              // The worst one starts open: if you only look at one thing, look at that.
-              defaultOpen={index === 0 && order.projection.slipDays > 0}
+              /* The worst one starts open: if you only look at one thing, look at that.
+                 Keyed off the derived status rather than `slipDays`, because a blocked
+                 order is at risk while its day count still looks comfortable. */
+              defaultOpen={
+                index === 0 &&
+                (order.projection.derivedStatus === "DELAYED" ||
+                  order.projection.derivedStatus === "AT_RISK")
+              }
             />
           ))}
         </div>
