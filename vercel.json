@@ -5,6 +5,12 @@
   "regions": ["bom1"],
   "crons": [
     {
+      "_comment": "09:00 IST — the morning order brief: what needs a decision today",
+      "path": "/api/cron/morning",
+      "schedule": "30 3 * * 1-5"
+    },
+    {
+      "_comment": "18:00 IST — reminders, task digest and the evening order summary",
       "path": "/api/cron/reminders",
       "schedule": "30 12 * * 1-5"
     }

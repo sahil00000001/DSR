@@ -684,6 +684,7 @@ export function asOrderActivityKind(value: string): OrderActivityKind {
 /** Outbound message kinds, for the send log. */
 export const MESSAGE_KINDS = [
   "digest",
+  "morning_brief",
   /** A message received *from* the admin. Logging it is how the 24h window is found. */
   "inbound",
   "order_risk",
