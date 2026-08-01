@@ -4,7 +4,7 @@ import { isManagerOrAdmin } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
 import type { NavCounts } from "@/components/layout/sidebar";
 import { lastNDays, subDays, today, toDayKey, workingDaysIn } from "@/lib/utils/date";
-import { TASK_OPEN_STATUSES } from "@/lib/constants/enums";
+import { ORDER_ATTENTION_STATUSES, TASK_OPEN_STATUSES } from "@/lib/constants/enums";
 
 /**
  * Counts for the navigation badges.
@@ -26,6 +26,7 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
     expensesToDecide,
     myOpenTasks,
     tasksInReview,
+    ordersNeedingAttention,
   ] = await Promise.all([
       prisma.notification.count({ where: { userId: user.id, readAt: null } }),
 
@@ -76,6 +77,11 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
             },
           })
         : Promise.resolve(0),
+
+      // Orders forecast to miss their promised date, or already past it.
+      canReview
+        ? prisma.order.count({ where: { status: { in: [...ORDER_ATTENTION_STATUSES] } } })
+        : Promise.resolve(0),
     ]);
 
   return {
@@ -86,6 +92,7 @@ export async function getNavCounts(user: SessionUser): Promise<NavCounts> {
     expensesToDecide,
     myOpenTasks,
     tasksInReview,
+    ordersNeedingAttention,
   };
 }
 

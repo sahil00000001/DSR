@@ -27,6 +27,19 @@ const PUBLIC_PATHS = [
   "/api/auth/google",
   "/api/health",
   "/api/cron",
+  /**
+   * The WhatsApp webhook.
+   *
+   * Meta has no session cookie and never will — it authenticates by signing the request
+   * body, which the route verifies with `X-Hub-Signature-256` before doing anything. It
+   * must therefore be reachable without a session, exactly like `/api/cron`, which is
+   * gated by a bearer secret rather than a login.
+   *
+   * Leaving it behind the login redirect silently breaks the integration in a way that is
+   * hard to spot: Meta's subscription handshake follows the 307 to `/login`, sees a 200,
+   * and reports the webhook as failed verification with no clue why.
+   */
+  "/api/whatsapp",
 ];
 
 /** Signed-in users are bounced away from these. */

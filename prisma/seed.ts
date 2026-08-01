@@ -39,6 +39,7 @@ import {
   LOCATIONS,
   NEXT_STEPS_BY_DEPARTMENT,
   NOTES,
+  ORDERS,
   PEOPLE,
   TASK_CATEGORIES,
   TASKS,
@@ -177,6 +178,10 @@ async function reset() {
   await prisma.task.deleteMany();
   await prisma.taskTag.deleteMany();
   await prisma.taskCategory.deleteMany();
+  await prisma.messageLog.deleteMany();
+  await prisma.orderActivity.deleteMany();
+  // Stages are tasks with an orderId; deleting the task rows first keeps the FK happy.
+  await prisma.order.deleteMany();
   await prisma.dailyStatusReport.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.leaveRequest.deleteMany();
@@ -1085,6 +1090,217 @@ async function main() {
     });
   }
 
+  // --- Customer orders -----------------------------------------------------
+  console.log("→ Orders…");
+
+  /** Working days back from today, so seeded durations mean what they say. */
+  const workingDaysAgo = (days: number) => {
+    let cursor = TODAY;
+    let stepped = 0;
+    let guard = 0;
+    while (stepped < days && guard < 400) {
+      cursor = addDays(cursor, -1);
+      guard += 1;
+      if (!isWeekend(cursor)) stepped += 1;
+    }
+    return cursor;
+  };
+
+  let orderSequence = 0;
+
+  for (const order of ORDERS) {
+    orderSequence += 1;
+    const promisedOn = addDays(TODAY, order.promisedInDays);
+
+    const created = await prisma.order.create({
+      data: {
+        orderNumber: `ORD-${String(orderSequence).padStart(4, "0")}`,
+        title: order.title,
+        customerName: order.customerName,
+        customerRef: order.customerRef ?? null,
+        description: order.description ?? null,
+        product: order.product ?? null,
+        quantity: order.quantity ?? null,
+        priority: order.priority,
+        status: "PENDING",
+        promisedOn,
+        createdById: admin.id,
+        createdAt: workingDaysAgo(
+          Math.max(...order.stages.map((s) => s.startedDaysAgo ?? 0), 2) + 2,
+        ),
+      },
+      select: { id: true, orderNumber: true },
+    });
+
+    for (const [index, stage] of order.stages.entries()) {
+      const person = userByEmail.get(stage.assigneeEmail);
+      if (!person) continue;
+
+      taskSequence += 1;
+      const startedAt =
+        stage.startedDaysAgo === null ? null : atHour(workingDaysAgo(stage.startedDaysAgo), 9, 30);
+      const completedAt =
+        stage.completedDaysAgo === null
+          ? null
+          : atHour(workingDaysAgo(stage.completedDaysAgo), 16, 45);
+
+      await prisma.task.create({
+        data: {
+          taskNumber: `TSK-${String(taskSequence).padStart(4, "0")}`,
+          title: stage.name,
+          description: `Stage ${index + 1} of ${created.orderNumber} — ${order.title}. ${
+            stage.allottedDays
+          } working day${stage.allottedDays === 1 ? "" : "s"} allotted.`,
+          priority: order.priority,
+          status: stage.status,
+          orderId: created.id,
+          orderPosition: index + 1,
+          allottedDays: stage.allottedDays,
+          startedAt,
+          completedAt,
+          progressPercent:
+            stage.status === "COMPLETED" ? 100 : (stage.progressPercent ?? 0),
+          blockedReason: stage.blockedReason ?? null,
+          createdById: admin.id,
+          createdAt: startedAt ?? workingDaysAgo(2),
+          assignees: {
+            create: { userId: person.id, assignedById: admin.id, seenAt: startedAt },
+          },
+        },
+      });
+    }
+
+    await prisma.orderActivity.create({
+      data: {
+        orderId: created.id,
+        actorId: admin.id,
+        kind: "created",
+        meta: JSON.stringify({
+          stages: order.stages.length,
+          totalAllotted: order.stages.reduce((sum, s) => sum + s.allottedDays, 0),
+          promisedOn: dayKey(promisedOn),
+          customer: order.customerName,
+        }),
+        createdAt: workingDaysAgo(
+          Math.max(...order.stages.map((s) => s.startedDaysAgo ?? 0), 2) + 2,
+        ),
+      },
+    });
+
+    for (const stage of order.stages) {
+      if (stage.startedDaysAgo !== null) {
+        await prisma.orderActivity.create({
+          data: {
+            orderId: created.id,
+            actorId: userByEmail.get(stage.assigneeEmail)?.id ?? null,
+            kind: "stage_started",
+            meta: JSON.stringify({ stage: stage.name }),
+            createdAt: atHour(workingDaysAgo(stage.startedDaysAgo), 9, 30),
+          },
+        });
+      }
+      if (stage.completedDaysAgo !== null) {
+        await prisma.orderActivity.create({
+          data: {
+            orderId: created.id,
+            actorId: userByEmail.get(stage.assigneeEmail)?.id ?? null,
+            kind: "stage_completed",
+            meta: JSON.stringify({ stage: stage.name }),
+            createdAt: atHour(workingDaysAgo(stage.completedDaysAgo), 16, 45),
+          },
+        });
+      }
+    }
+
+    for (const note of order.notes ?? []) {
+      await prisma.orderActivity.create({
+        data: {
+          orderId: created.id,
+          actorId: userByEmail.get(note.authorEmail)?.id ?? null,
+          kind: "note",
+          comment: note.body,
+          createdAt: atHour(addDays(TODAY, -note.daysAgo), 14, 10),
+        },
+      });
+    }
+  }
+
+  /**
+   * Forecast every seeded order with the real engine.
+   *
+   * Deliberately not hand-written statuses: the seed sets the *facts* (when each stage
+   * started and finished) and the engine derives AT_RISK, DELAYED and COMPLETED from
+   * them. If the seed asserted the statuses itself, a bug in the engine would be hidden
+   * by demo data that agreed with it.
+   */
+  {
+    const { projectOrder } = await import("../src/lib/orders/projection");
+
+    const holidayRows = await prisma.holiday.findMany({
+      where: { type: { in: ["PUBLIC", "COMPANY"] } },
+      select: { date: true },
+    });
+    const holidaySet = new Set(holidayRows.map((row) => dayKey(row.date)));
+
+    const orders = await prisma.order.findMany({
+      select: {
+        id: true,
+        promisedOn: true,
+        startedOn: true,
+        stages: {
+          select: {
+            id: true,
+            title: true,
+            orderPosition: true,
+            allottedDays: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+            progressPercent: true,
+            assignees: { select: { user: { select: { id: true, name: true } } } },
+          },
+        },
+      },
+    });
+
+    for (const order of orders) {
+      const projection = projectOrder(
+        { promisedOn: order.promisedOn, startedOn: order.startedOn },
+        order.stages.map((stage) => ({
+          id: stage.id,
+          name: stage.title,
+          position: stage.orderPosition ?? 0,
+          allottedDays: stage.allottedDays,
+          // Cast at the boundary: the column is a String, the engine wants the union.
+          status: stage.status as never,
+          startedAt: stage.startedAt,
+          completedAt: stage.completedAt,
+          progressPercent: stage.progressPercent,
+          assignees: stage.assignees.map((entry) => entry.user),
+        })),
+        { asOf: TODAY, holidays: holidaySet },
+      );
+
+      const earliestStart = order.stages
+        .map((stage) => stage.startedAt)
+        .filter((value) => value !== null)
+        .sort((a, b) => a.getTime() - b.getTime())[0];
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: projection.derivedStatus,
+          slipDays: projection.slipDays,
+          projectedOn: projection.projectedOn,
+          projectedAt: new Date(),
+          startedOn: earliestStart ?? null,
+          completedOn:
+            projection.derivedStatus === "COMPLETED" ? projection.projectedOn : null,
+        },
+      });
+    }
+  }
+
   // --- Summary ------------------------------------------------------------
   const [
     users,
@@ -1096,6 +1312,8 @@ async function main() {
     claimTotal,
     taskCount,
     taskUpdateCount,
+    orderCount,
+    lateOrders,
   ] = await Promise.all([
       prisma.user.count(),
       prisma.dailyStatusReport.count(),
@@ -1106,6 +1324,8 @@ async function main() {
       prisma.expenseClaim.aggregate({ _sum: { amountMinor: true } }),
       prisma.task.count(),
       prisma.taskUpdate.count(),
+      prisma.order.count(),
+      prisma.order.count({ where: { status: { in: ["AT_RISK", "DELAYED"] } } }),
     ]);
 
   console.log(`
@@ -1116,6 +1336,7 @@ async function main() {
   Status reports      ${reports}
   Attendance records  ${attendance}
   Leave requests      ${leave}
+  Orders              ${orderCount}   needing attention ${lateOrders}
   Tasks               ${taskCount}   updates ${taskUpdateCount}
   Expense claims      ${claims}   worth ₹${((claimTotal._sum.amountMinor ?? 0) / 100).toLocaleString("en-IN")}
   Notifications       ${notifications}

@@ -11,6 +11,7 @@ import {
   FileText,
   Plane,
   ListChecks,
+  Package,
   Plus,
   Receipt,
   Search,
@@ -78,6 +79,14 @@ const QUICK_ACTIONS: PaletteItem[] = [
     icon: <Plane className="size-4" />,
     href: "/leave/new",
     keywords: "holiday time off apply sick casual",
+  },
+  {
+    id: "action-orders-late",
+    group: "Actions",
+    label: "Show orders running late",
+    icon: <Package className="size-4" />,
+    href: "/orders?scope=attention",
+    keywords: "order late delayed breach risk customer dealer promised",
   },
   {
     id: "action-task-board",

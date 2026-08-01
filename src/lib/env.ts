@@ -103,6 +103,50 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("Pooja Machines <no-reply@poojamachines.co.in>"),
 
   CRON_SECRET: z.string().optional(),
+
+  /**
+   * Outbound messaging — the end-of-day order summary.
+   *
+   * `openwa` posts to a self-hosted OpenWA gateway; `cloud` posts to Meta's official
+   * WhatsApp Cloud API; `telegram` posts to the Bot API; `none` writes to the send log
+   * only, which is the right default for development and for any deployment that has
+   * not set a channel up yet.
+   *
+   * OpenWA **cannot run on Vercel**: it holds a headless Chromium and a scanned QR
+   * session, and Vercel functions are ephemeral with a read-only filesystem. It runs on
+   * a separate always-on host and this app talks to it over HTTP. See docs/WHATSAPP.md.
+   */
+  MESSAGING_PROVIDER: z.enum(["none", "openwa", "cloud", "telegram"]).default("none"),
+
+  /** Where the summary goes. Digits with country code, no plus: 919876543210. */
+  MESSAGING_ADMIN_NUMBER: z.string().optional(),
+
+  // OpenWA — self-hosted gateway
+  OPENWA_BASE_URL: optionalUrl,
+  OPENWA_API_KEY: z.string().optional(),
+  OPENWA_SESSION_ID: z.string().optional(),
+  /** Shared secret OpenWA signs its inbound webhooks with. */
+  OPENWA_WEBHOOK_SECRET: z.string().optional(),
+
+  /**
+   * Meta WhatsApp Cloud API — the recommended channel.
+   *
+   * Runs from Vercel with a single fetch: no server, no QR session, no ban risk. Free
+   * inside a 24-hour customer service window, ~₹0.115 + GST per template outside one,
+   * which is roughly ₹4/month for one daily summary. See docs/WHATSAPP.md.
+   */
+  WHATSAPP_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_ID: z.string().optional(),
+  /** App secret, for verifying the X-Hub-Signature-256 on inbound webhooks. */
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  /** Echoed back during Meta's webhook handshake. Any string you choose. */
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  /** Approved utility template, used when no service window is open. */
+  WHATSAPP_SUMMARY_TEMPLATE: z.string().default("order_daily_summary"),
+
+  // Telegram — free forever, no approval
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_CHAT_ID: z.string().optional(),
 });
 
 function parseEnv() {
@@ -157,6 +201,26 @@ export const isProduction = env.NODE_ENV === "production";
 
 /** Supabase-backed storage/realtime features can be enabled. */
 export const isSupabaseConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_SECRET_KEY);
+
+/**
+ * True when a real messaging channel is wired up.
+ *
+ * Checks the credentials the *chosen* provider actually needs rather than any one
+ * variable: a deployment with `MESSAGING_PROVIDER=openwa` and no base URL is
+ * misconfigured, and reporting that as enabled would hide it until 6pm.
+ */
+export const isMessagingEnabled = (() => {
+  switch (env.MESSAGING_PROVIDER) {
+    case "openwa":
+      return Boolean(env.OPENWA_BASE_URL && env.OPENWA_API_KEY && env.OPENWA_SESSION_ID);
+    case "cloud":
+      return Boolean(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_ID);
+    case "telegram":
+      return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
+    default:
+      return false;
+  }
+})();
 
 /**
  * Warns when the runtime URL is a direct Postgres connection in production.

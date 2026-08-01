@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Megaphone,
   ListChecks,
+  Package,
   Plane,
   Receipt,
   ScrollText,
@@ -35,7 +36,8 @@ export type BadgeKey =
   | "unreadNotifications"
   | "expensesToDecide"
   | "myOpenTasks"
-  | "tasksInReview";
+  | "tasksInReview"
+  | "ordersNeedingAttention";
 
 export interface NavItem {
   href: string;
@@ -132,6 +134,14 @@ const SECTIONS: NavSection[] = [
         roles: MANAGEMENT,
         badge: "pendingLeave",
         keywords: ["approve", "reject", "pending"],
+      },
+      {
+        href: "/orders",
+        label: "Orders",
+        icon: Package,
+        roles: MANAGEMENT,
+        badge: "ordersNeedingAttention",
+        keywords: ["order", "customer", "dealer", "delivery", "promised", "late", "breach"],
       },
       {
         href: "/tasks?scope=all&status=REVIEW",

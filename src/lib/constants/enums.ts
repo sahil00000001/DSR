@@ -581,3 +581,116 @@ export const DEFAULT_TASK_TAGS = [
   { name: "Dispatch", color: "teal" },
   { name: "Safety", color: "rose" },
 ] as const;
+
+// ---------------------------------------------------------------------------
+//  Orders
+// ---------------------------------------------------------------------------
+
+export const ORDER_STATUSES = [
+  "PENDING",
+  "IN_PROGRESS",
+  "AT_RISK",
+  "DELAYED",
+  "COMPLETED",
+  "CANCELLED",
+] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  PENDING: "Not started",
+  IN_PROGRESS: "On track",
+  AT_RISK: "At risk",
+  DELAYED: "Delayed",
+  COMPLETED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+export const ORDER_STATUS_TONE = {
+  PENDING: "neutral",
+  IN_PROGRESS: "info",
+  AT_RISK: "warning",
+  DELAYED: "danger",
+  COMPLETED: "success",
+  CANCELLED: "neutral",
+} as const;
+
+/** What the status means for the promise. Shown beside it, never left to inference. */
+export const ORDER_STATUS_MEANING: Record<OrderStatus, string> = {
+  PENDING: "No stage has started yet.",
+  IN_PROGRESS: "Forecast to land on or before the promised date.",
+  AT_RISK: "Forecast to miss the promised date — there is still time to act.",
+  DELAYED: "The promised date has passed and the work is not finished.",
+  COMPLETED: "Delivered.",
+  CANCELLED: "Cancelled — no longer tracked.",
+};
+
+/** Statuses that still represent a live commitment to a customer. */
+export const ORDER_OPEN_STATUSES = [
+  "PENDING",
+  "IN_PROGRESS",
+  "AT_RISK",
+  "DELAYED",
+] as const satisfies readonly OrderStatus[];
+
+/** Statuses that need somebody to act today. */
+export const ORDER_ATTENTION_STATUSES = [
+  "AT_RISK",
+  "DELAYED",
+] as const satisfies readonly OrderStatus[];
+
+export const ORDER_ACTIVITY_KINDS = [
+  "created",
+  "stage_added",
+  "stage_started",
+  "stage_completed",
+  "stage_overran",
+  "promised_date_changed",
+  "status_changed",
+  "at_risk",
+  "recovered",
+  "delivered",
+  "cancelled",
+  "note",
+] as const;
+export type OrderActivityKind = (typeof ORDER_ACTIVITY_KINDS)[number];
+
+export const ORDER_ACTIVITY_LABEL: Record<OrderActivityKind, string> = {
+  created: "created the order",
+  stage_added: "added a stage",
+  stage_started: "started a stage",
+  stage_completed: "finished a stage",
+  stage_overran: "went over the allotted time",
+  promised_date_changed: "moved the promised date",
+  status_changed: "changed the status",
+  at_risk: "was forecast to run late",
+  recovered: "came back on track",
+  delivered: "was delivered",
+  cancelled: "was cancelled",
+  note: "left a note",
+};
+
+export function asOrderStatus(value: string): OrderStatus {
+  return (ORDER_STATUSES as readonly string[]).includes(value)
+    ? (value as OrderStatus)
+    : "PENDING";
+}
+
+export function asOrderActivityKind(value: string): OrderActivityKind {
+  return (ORDER_ACTIVITY_KINDS as readonly string[]).includes(value)
+    ? (value as OrderActivityKind)
+    : "note";
+}
+
+/** Outbound message kinds, for the send log. */
+export const MESSAGE_KINDS = [
+  "digest",
+  /** A message received *from* the admin. Logging it is how the 24h window is found. */
+  "inbound",
+  "order_risk",
+  "order_delayed",
+  "order_complete",
+  "stage_done",
+  "inbound_reply",
+  "test",
+] as const;
+export type MessageKind = (typeof MESSAGE_KINDS)[number];

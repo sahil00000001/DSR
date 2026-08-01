@@ -36,6 +36,7 @@ import { recordAudit } from "@/lib/services/audit";
 import { notify, notifyMany } from "@/lib/services/notifications";
 import { sendEmail } from "@/lib/email/mailer";
 import { taskAssignedEmail } from "@/lib/email/templates";
+import { recomputeOrderForTask } from "@/server/actions/orders";
 import { formError, formSuccess, type FormState } from "@/server/actions/form-state";
 
 /**
@@ -755,6 +756,9 @@ export async function changeTaskStatusAction(
       meta: { taskNumber: task.taskNumber, from, to },
     });
 
+    // If this task is a stage of an order, the forecast has just changed.
+    await recomputeOrderForTask(task.id);
+
     revalidateTask(task.id);
     return formSuccess(`${task.taskNumber} moved to ${TASK_STATUS_LABEL[to].toLowerCase()}.`);
   } catch (error) {
@@ -840,6 +844,8 @@ export async function setTaskProgressAction(
       kind: to === 100 ? "completed" : "progress_changed",
       meta: { from: task.progressPercent, to },
     });
+
+    await recomputeOrderForTask(task.id);
 
     revalidateTask(task.id);
     return formSuccess(to === 100 ? `${task.taskNumber} marked complete.` : `Progress set to ${to}%.`);
@@ -1086,6 +1092,8 @@ export async function toggleChecklistItemAction(
         meta: { label: item.label, done, total },
       });
     }
+
+    await recomputeOrderForTask(task.id);
 
     revalidateTask(task.id);
     return formSuccess(`${done} of ${total} done.`);

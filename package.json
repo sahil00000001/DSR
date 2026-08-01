@@ -19,7 +19,8 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "vercel:env": "node scripts/push-env.mjs",
-    "build:webpack": "prisma generate && next build --webpack"
+    "build:webpack": "prisma generate && next build --webpack",
+    "check:projection": "tsx scripts/check-projection.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

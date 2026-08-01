@@ -146,6 +146,31 @@ export const can = {
   /** Task categories and the shared tag vocabulary. */
   manageTaskCategories: (actor: Actor) => isAdmin(actor),
 
+  // --- Orders --------------------------------------------------------------
+
+  /**
+   * An order is a commitment to somebody outside the company, so only admins create
+   * or reshape one. A line manager quietly moving a promised date is how a dealer
+   * finds out late.
+   */
+  manageOrders: (actor: Actor) => isAdmin(actor),
+
+  /**
+   * See the order board. Managers included: a fitter's stage sits inside an order, and
+   * a manager who cannot see the order cannot see why the stage matters.
+   */
+  viewOrders: (actor: Actor) => isManagerOrAdmin(actor),
+
+  /**
+   * Read one order. Anyone assigned to one of its stages qualifies — they are doing the
+   * work, and the forecast is the context for it.
+   */
+  viewOrder: (actor: Actor, order: { stageAssigneeIds: readonly string[] }) =>
+    isManagerOrAdmin(actor) || order.stageAssigneeIds.includes(actor.id),
+
+  /** Move the promised date. Admin only, and always audited. */
+  changePromisedDate: (actor: Actor) => isAdmin(actor),
+
   // --- Attendance ----------------------------------------------------------
 
   markOwnAttendance: (_actor: Actor) => true,
