@@ -21,6 +21,12 @@ import { formatDayLong, isWeekend, toDayKey, today } from "@/lib/utils/date";
 /**
  * Scheduled reminders and housekeeping.
  *
+ * **Schedule: `30 12 * * 1-5` — 18:00 IST, Monday to Friday.** Declared in `vercel.json`,
+ * repeated here because that file is JSON and cannot carry a comment.
+ *
+ * The companion run is `/api/cron/morning` at 09:00 IST. Two jobs is the Vercel Hobby
+ * limit, so a third scheduled task needs Pro.
+ *
  * Invoked by Vercel Cron (see vercel.json). Three properties matter:
  *
  *  • **Authenticated.** Vercel sends `Authorization: Bearer $CRON_SECRET`. Without

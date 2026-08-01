@@ -11,6 +11,11 @@ import { isWeekend, toDayKey, today } from "@/lib/utils/date";
 /**
  * The morning order brief.
  *
+ * **Schedule: `30 3 * * 1-5` — 09:00 IST, Monday to Friday.** Declared in `vercel.json`,
+ * repeated here because that file is JSON and cannot hold a comment: Vercel validates it
+ * against a strict schema and rejects any property it does not recognise, including one
+ * called `_comment`.
+ *
  * ## Why a second cron rather than one at 6pm
  *
  * The evening digest is a review — by the time it arrives the day is spent. The point of
