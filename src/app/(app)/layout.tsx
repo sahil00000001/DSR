@@ -30,7 +30,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "collapsed";
 
   return (
-    <div className="flex min-h-dvh">
+    /**
+     * `data-role` scopes the motion layer.
+     *
+     * The admin surfaces animate — a staggered reveal that makes worst-first ordering
+     * legible, and a pulse on anything late. Employee surfaces deliberately do not: a
+     * fitter opens this on a phone between jobs to mark a task done, and movement there is
+     * friction dressed as polish. One attribute rather than a prop threaded through forty
+     * components, so the two can never drift apart.
+     */
+    <div className="flex min-h-dvh" data-role={user.role}>
       <Sidebar role={user.role} counts={counts} initialCollapsed={collapsed} />
 
       <div className="flex min-w-0 flex-1 flex-col">

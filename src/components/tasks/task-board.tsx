@@ -135,7 +135,7 @@ export function TaskBoard({
         </p>
       ) : null}
 
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3">
+      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-3" data-stagger>
         {columns.map((column) => (
           <section
             key={column.status}
