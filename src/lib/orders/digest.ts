@@ -1,7 +1,7 @@
 import "server-only";
 import { BRAND } from "@/lib/constants/brand";
 import { ORDER_STATUS_LABEL } from "@/lib/constants/enums";
-import { formatDayShort, formatDayLong, today } from "@/lib/utils/date";
+import { formatDayShort, formatDayLong, toDayKey, today } from "@/lib/utils/date";
 import { listOpenOrdersProjected, type OrderDto } from "@/lib/services/orders";
 
 /**
@@ -210,6 +210,93 @@ export function buildHelpReply(): string {
     "",
     "You will also get this automatically at the end of each working day.",
   ].join("\n");
+}
+
+/**
+ * The morning brief.
+ *
+ * ## Why this exists as well as the evening digest
+ *
+ * The evening summary is a review — it tells you what happened. By then the day is gone.
+ * The whole premise of the forecast is acting *before* a promise breaks, and the only time
+ * you can act on a day is at the start of it.
+ *
+ * So this answers a narrower, more useful question: **what needs a decision today.** It
+ * leads with what is due today, then what is already late, then what will be late unless
+ * something changes. Orders that are comfortably on track are reduced to a single count —
+ * they need nothing from anybody this morning, and listing them buries the three that do.
+ */
+export async function buildMorningBrief(orders?: OrderDto[]): Promise<OrderDigest> {
+  const all = orders ?? (await listOpenOrdersProjected());
+  const now = today();
+  const todayKey = toDayKey(now);
+
+  const dueToday = all.filter((order) => toDayKey(order.promisedOn) === todayKey);
+  const late = all.filter((order) => order.projection.derivedStatus === "DELAYED");
+  const atRisk = all.filter((order) => order.projection.derivedStatus === "AT_RISK");
+
+  // An order due today that is also late belongs in one place, not two.
+  const alsoDue = new Set(dueToday.map((order) => order.id));
+  const lateNotDue = late.filter((order) => !alsoDue.has(order.id));
+  const riskNotDue = atRisk.filter((order) => !alsoDue.has(order.id));
+
+  const needsNothing = all.length - dueToday.length - lateNotDue.length - riskNotDue.length;
+  const worstFirst = (a: OrderDto, b: OrderDto) => b.projection.slipDays - a.projection.slipDays;
+
+  const lines: string[] = [`*Good morning — ${formatDayLong(now)}*`, ""];
+
+  if (dueToday.length + lateNotDue.length + riskNotDue.length === 0) {
+    lines.push(
+      all.length === 0
+        ? "No open orders."
+        : `Nothing needs a decision today. All ${all.length} open order${
+            all.length === 1 ? "" : "s"
+          } are forecast to land on or before the promised date.`,
+    );
+  } else {
+    if (dueToday.length > 0) {
+      lines.push(`*Due today (${dueToday.length})*`);
+      lines.push(...[...dueToday].sort(worstFirst).map(orderLine), "");
+    }
+    if (lateNotDue.length > 0) {
+      lines.push(`*Already late (${lateNotDue.length})*`);
+      lines.push(...[...lateNotDue].sort(worstFirst).map(orderLine), "");
+    }
+    if (riskNotDue.length > 0) {
+      lines.push(`*Will slip unless something changes (${riskNotDue.length})*`);
+      lines.push(...[...riskNotDue].sort(worstFirst).map(orderLine), "");
+    }
+    if (needsNothing > 0) {
+      lines.push(
+        `${needsNothing} other order${needsNothing === 1 ? "" : "s"} on track — nothing needed.`,
+        "",
+      );
+    }
+  }
+
+  lines.push("Reply STATUS for everything, or LATE for just the problems.");
+
+  const worst = [...all].sort(worstFirst)[0];
+  const worstSlip = Math.max(0, ...all.map((order) => order.projection.slipDays));
+
+  return {
+    text: lines.join("\n").trim(),
+    templateParams: [
+      formatDayShort(now),
+      String(all.length),
+      String(dueToday.length + lateNotDue.length + riskNotDue.length),
+      worst && worstSlip > 0 ? `${worst.orderNumber} (${worstSlip}d)` : "none",
+    ],
+    counts: {
+      open: all.length,
+      delayed: late.length,
+      atRisk: atRisk.length,
+      onTrack: Math.max(0, needsNothing),
+    },
+    // A morning with nothing to decide is worth saying once — it is a short line, and
+    // silence would read as the integration having stopped.
+    worthSending: all.length > 0,
+  };
 }
 
 /** Just the orders running behind, for the LATE command. */

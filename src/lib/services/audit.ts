@@ -63,6 +63,7 @@ export type AuditAction =
   | "order.deliver"
   | "order.cancel"
   | "message.send"
+  | "cron.morning_brief"
   | "employee.create"
   | "employee.update"
   | "employee.disable"
@@ -271,6 +272,7 @@ export function describeAudit(entry: AuditEntry): string {
     "order.deliver": "marked an order delivered",
     "order.cancel": "cancelled an order",
     "message.send": "sent an outbound message",
+    "cron.morning_brief": "sent the morning order brief",
     "employee.create": "added an employee",
     "employee.update": "updated an employee",
     "employee.disable": "disabled an employee",
