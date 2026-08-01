@@ -178,6 +178,101 @@ console.log("\n=== Status derivation ===");
   check("explanation mentions spare days", explainProjection(running).includes("to spare"), explainProjection(running));
 }
 
+console.log("\n=== A blocked stage is never reported as on track ===");
+{
+  /**
+   * The case real seeded data exposed.
+   *
+   * A stage blocked on a rejected bearing consignment, with a generous promise date, was
+   * forecast "6 days early" — because the day count can only assume a blocked stage needs
+   * the rest of its allowance. A stopped order reported as comfortable is worse than no
+   * forecast at all, because somebody will believe it.
+   */
+  const blocked = projectOrder(
+    { promisedOn: day("2026-08-21"), startedOn: MON },
+    [
+      stage({
+        position: 1,
+        name: "Machine shop",
+        status: "COMPLETED",
+        startedAt: MON,
+        completedAt: day("2026-08-04"),
+        progressPercent: 100,
+      }),
+      stage({
+        position: 2,
+        name: "Assembly",
+        allottedDays: 3,
+        status: "BLOCKED",
+        startedAt: day("2026-08-05"),
+        progressPercent: 30,
+        assignees: [{ id: "u2", name: "Ramesh Kumar Sahu" }],
+      }),
+      stage({ position: 3, name: "Final testing" }),
+    ],
+    { asOf: day("2026-08-10") },
+  );
+
+  check("a blocked stage is surfaced", blocked.blockedStages.length === 1, blocked.blockedStages[0]?.name);
+  check(
+    "the order is AT_RISK even though the day count says early",
+    blocked.derivedStatus === "AT_RISK",
+    `${blocked.derivedStatus}, slip ${blocked.slipDays}`,
+  );
+  check("and the slip arithmetic stays honest", blocked.slipDays < 0, `${blocked.slipDays}`);
+  check(
+    "the explanation leads with the block, not a date",
+    explainProjection(blocked).startsWith("Stopped:") &&
+      explainProjection(blocked).includes("Ramesh") &&
+      explainProjection(blocked).includes("cannot be forecast"),
+    explainProjection(blocked),
+  );
+
+  // Clearing the block must let the order read normally again.
+  const unblocked = projectOrder(
+    { promisedOn: day("2026-08-21"), startedOn: MON },
+    [
+      stage({
+        position: 1,
+        name: "Machine shop",
+        status: "COMPLETED",
+        startedAt: MON,
+        completedAt: day("2026-08-04"),
+        progressPercent: 100,
+      }),
+      stage({
+        position: 2,
+        name: "Assembly",
+        allottedDays: 3,
+        status: "IN_PROGRESS",
+        startedAt: day("2026-08-05"),
+        progressPercent: 30,
+      }),
+      stage({ position: 3, name: "Final testing" }),
+    ],
+    { asOf: day("2026-08-10") },
+  );
+  check(
+    "clearing the block restores a normal reading",
+    unblocked.derivedStatus === "IN_PROGRESS",
+    unblocked.derivedStatus,
+  );
+  check("and no blocked stages remain", unblocked.blockedStages.length === 0);
+
+  // Blocked *and* past the promise is DELAYED, not merely at risk.
+  const blockedAndLate = projectOrder(
+    { promisedOn: day("2026-08-05"), startedOn: MON },
+    [stage({ position: 1, name: "Assembly", allottedDays: 2, status: "BLOCKED", startedAt: MON })],
+    { asOf: day("2026-08-10") },
+  );
+  check("blocked and past the date is DELAYED", blockedAndLate.derivedStatus === "DELAYED");
+  check(
+    "and the explanation says how far past",
+    explainProjection(blockedAndLate).includes("past the promise"),
+    explainProjection(blockedAndLate),
+  );
+}
+
 console.log("\n=== Edge cases that would produce a wrong date ===");
 {
   // A running stage that has burned its whole allowance must still need a day left,

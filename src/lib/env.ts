@@ -128,9 +128,21 @@ const schema = z.object({
   /** Shared secret OpenWA signs its inbound webhooks with. */
   OPENWA_WEBHOOK_SECRET: z.string().optional(),
 
-  // Meta WhatsApp Cloud API — the Vercel-native alternative
+  /**
+   * Meta WhatsApp Cloud API — the recommended channel.
+   *
+   * Runs from Vercel with a single fetch: no server, no QR session, no ban risk. Free
+   * inside a 24-hour customer service window, ~₹0.115 + GST per template outside one,
+   * which is roughly ₹4/month for one daily summary. See docs/WHATSAPP.md.
+   */
   WHATSAPP_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_ID: z.string().optional(),
+  /** App secret, for verifying the X-Hub-Signature-256 on inbound webhooks. */
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  /** Echoed back during Meta's webhook handshake. Any string you choose. */
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  /** Approved utility template, used when no service window is open. */
+  WHATSAPP_SUMMARY_TEMPLATE: z.string().default("order_daily_summary"),
 
   // Telegram — free forever, no approval
   TELEGRAM_BOT_TOKEN: z.string().optional(),

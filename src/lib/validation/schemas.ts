@@ -664,3 +664,50 @@ export const taskFilterSchema = z.object({
 });
 
 export type TaskFilterInput = z.infer<typeof taskFilterSchema>;
+
+// ---------------------------------------------------------------------------
+//  Orders
+// ---------------------------------------------------------------------------
+
+export const orderSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(4, "Give the order a short title, e.g. “150 domestic machines — Amritsar”.")
+    .max(180, "Keep the title under 180 characters."),
+  customerName: z
+    .string()
+    .trim()
+    .min(2, "Who is this for?")
+    .max(140, "Keep the customer name under 140 characters."),
+  customerRef: optionalText(80),
+  description: optionalText(4000),
+  product: optionalText(140),
+  quantity: z.coerce.number().int().min(1).max(1_000_000).optional(),
+  priority: z.enum(TASK_PRIORITIES),
+  /** The date the customer was given. Required — see the note on Order.promisedOn. */
+  promisedOn: dayKey,
+});
+
+export const orderStageSchema = z.object({
+  orderId: z.string().min(1),
+  name: z
+    .string()
+    .trim()
+    .min(2, "Give the stage a name, e.g. “Final testing”.")
+    .max(140, "Keep the stage name short."),
+  assigneeId: z.string().min(1, "Pick who is responsible for this stage."),
+  allottedDays: z.coerce
+    .number()
+    .int()
+    .min(1, "A stage needs at least one working day.")
+    .max(90, "Ninety days is the most a single stage can be given."),
+});
+
+export const orderFilterSchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: csvList,
+  scope: z.enum(["open", "attention", "all", "delivered"]).optional(),
+});
+
+export type OrderFilterInput = z.infer<typeof orderFilterSchema>;

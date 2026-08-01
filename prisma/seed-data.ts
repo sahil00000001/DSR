@@ -1444,3 +1444,291 @@ export const TASKS: SeedTask[] = [
     recurrenceEvery: 1,
   },
 ];
+
+// ---------------------------------------------------------------------------
+//  Customer orders
+// ---------------------------------------------------------------------------
+
+export interface SeedOrderStage {
+  name: string;
+  assigneeEmail: string;
+  allottedDays: number;
+  /** TODO | IN_PROGRESS | COMPLETED | BLOCKED */
+  status: "TODO" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+  /** Working days ago the stage started. Null means it has not. */
+  startedDaysAgo: number | null;
+  /** Working days ago it finished. Null means it has not. */
+  completedDaysAgo: number | null;
+  progressPercent?: number;
+  blockedReason?: string;
+}
+
+export interface SeedOrder {
+  title: string;
+  customerName: string;
+  customerRef?: string;
+  product?: string;
+  quantity?: number;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** Days from today. Negative is in the past. */
+  promisedInDays: number;
+  description?: string;
+  stages: SeedOrderStage[];
+  notes?: Array<{ authorEmail: string; body: string; daysAgo: number }>;
+}
+
+/**
+ * Orders written to exercise every forecast state the engine can produce.
+ *
+ * ORD-0001 is the client's own example, made concrete: three stages of one day each
+ * against a three-day promise, with the first person three days in. It is the order that
+ * proves the forecast works, so it is the one the page opens on.
+ */
+export const ORDERS: SeedOrder[] = [
+  {
+    title: "150 domestic straight-stitch machines",
+    customerName: "Ludhiana Sewing Centre",
+    customerRef: "PO-4471",
+    product: "JK-2 domestic",
+    quantity: 150,
+    priority: "CRITICAL",
+    // Promised two days ago and still not out: already late, not merely forecast late.
+    promisedInDays: -2,
+    description:
+      "Dealer has customers waiting. Two-tier stacking, heavier boxes. Their godown is closed Sundays.",
+    stages: [
+      {
+        name: "Machine shop — bed castings and shafts",
+        assigneeEmail: "satish.dubey@poojamachines.co.in",
+        allottedDays: 1,
+        status: "IN_PROGRESS",
+        startedDaysAgo: 5,
+        completedDaysAgo: null,
+        progressPercent: 70,
+      },
+      {
+        name: "Head assembly and timing",
+        assigneeEmail: "ramesh.sahu@poojamachines.co.in",
+        allottedDays: 1,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+      {
+        name: "Final testing and boxing",
+        assigneeEmail: "neelam.singh@poojamachines.co.in",
+        allottedDays: 1,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+    ],
+    notes: [
+      {
+        authorEmail: "anil.gupta@poojamachines.co.in",
+        body: "Dealer rang again. Told him Thursday. Satish, what is holding the castings up?",
+        daysAgo: 1,
+      },
+    ],
+  },
+  {
+    title: "90 pedestal fans",
+    customerName: "Kanpur Electricals",
+    customerRef: "KE-8821",
+    product: "Pedestal 400mm",
+    quantity: 90,
+    priority: "HIGH",
+    /**
+     * AT_RISK from the arithmetic alone — nothing is blocked here.
+     *
+     * Blade balancing was given 2 days and is 5 in, so the remaining work no longer fits
+     * before the promise. This is the scenario the works manager described: one person
+     * overruns, and the order is forecast late while the stages after it have not even
+     * started.
+     */
+    promisedInDays: 4,
+    stages: [
+      {
+        name: "Motor winding",
+        assigneeEmail: "kavita.rani@poojamachines.co.in",
+        allottedDays: 2,
+        status: "COMPLETED",
+        startedDaysAgo: 8,
+        completedDaysAgo: 6,
+      },
+      {
+        name: "Blade balancing and assembly",
+        assigneeEmail: "vinod.meena@poojamachines.co.in",
+        allottedDays: 2,
+        status: "IN_PROGRESS",
+        startedDaysAgo: 5,
+        completedDaysAgo: null,
+        progressPercent: 55,
+      },
+      {
+        name: "Noise check and packing",
+        assigneeEmail: "ashok.bind@poojamachines.co.in",
+        allottedDays: 4,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+    ],
+  },
+  {
+    title: "40 machines for the tailoring institute",
+    customerName: "Karnal Tailoring Institute",
+    customerRef: "KTI-2026-11",
+    product: "JK-2 domestic",
+    quantity: 40,
+    priority: "MEDIUM",
+    // Blocked stage, and the block is the reason it will slip.
+    promisedInDays: 6,
+    description: "Institute term starts on the 20th. They need all forty on the day.",
+    stages: [
+      {
+        name: "Machine shop",
+        assigneeEmail: "satish.dubey@poojamachines.co.in",
+        allottedDays: 2,
+        status: "COMPLETED",
+        startedDaysAgo: 9,
+        completedDaysAgo: 7,
+      },
+      {
+        name: "Assembly",
+        assigneeEmail: "ramesh.sahu@poojamachines.co.in",
+        allottedDays: 3,
+        status: "BLOCKED",
+        startedDaysAgo: 4,
+        completedDaysAgo: null,
+        progressPercent: 30,
+        blockedReason:
+          "Bearing consignment rejected by QA — 11 of 40 outside tolerance. Replacement stock not confirmed.",
+      },
+      {
+        name: "Final testing",
+        assigneeEmail: "neelam.singh@poojamachines.co.in",
+        allottedDays: 1,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+    ],
+  },
+  {
+    title: "200 ceiling fans",
+    customerName: "Sharma Electricals, Gurugram",
+    customerRef: "SE-3390",
+    product: "Ceiling 1200mm",
+    quantity: 200,
+    priority: "MEDIUM",
+    // Comfortably on track — the page needs a healthy order on it too.
+    promisedInDays: 12,
+    stages: [
+      {
+        name: "Motor winding",
+        assigneeEmail: "kavita.rani@poojamachines.co.in",
+        allottedDays: 3,
+        status: "COMPLETED",
+        startedDaysAgo: 6,
+        completedDaysAgo: 3,
+      },
+      {
+        name: "Blade sets and balancing",
+        assigneeEmail: "vinod.meena@poojamachines.co.in",
+        allottedDays: 2,
+        status: "IN_PROGRESS",
+        startedDaysAgo: 1,
+        completedDaysAgo: null,
+        progressPercent: 40,
+      },
+      {
+        name: "Testing and dispatch",
+        assigneeEmail: "pankaj.gupta@poojamachines.co.in",
+        allottedDays: 2,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+    ],
+  },
+  {
+    title: "60 table fans",
+    customerName: "Jalandhar Home Appliances",
+    customerRef: "JHA-771",
+    product: "Table 400mm",
+    quantity: 60,
+    priority: "LOW",
+    // Not started at all — the PENDING case.
+    promisedInDays: 18,
+    stages: [
+      {
+        name: "Motor winding",
+        assigneeEmail: "kavita.rani@poojamachines.co.in",
+        allottedDays: 2,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+      {
+        name: "Assembly and paint",
+        assigneeEmail: "manoj.patel@poojamachines.co.in",
+        allottedDays: 3,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+      {
+        name: "Testing and packing",
+        assigneeEmail: "ashok.bind@poojamachines.co.in",
+        allottedDays: 1,
+        status: "TODO",
+        startedDaysAgo: null,
+        completedDaysAgo: null,
+      },
+    ],
+  },
+  {
+    title: "120 domestic machines",
+    customerName: "Amritsar Sewing House",
+    customerRef: "ASH-6612",
+    product: "JK-2 domestic",
+    quantity: 120,
+    priority: "HIGH",
+    // Delivered, and early — so the page has a completed order with a real record.
+    promisedInDays: -4,
+    stages: [
+      {
+        name: "Machine shop",
+        assigneeEmail: "satish.dubey@poojamachines.co.in",
+        allottedDays: 2,
+        status: "COMPLETED",
+        startedDaysAgo: 14,
+        completedDaysAgo: 12,
+      },
+      {
+        name: "Assembly",
+        assigneeEmail: "ramesh.sahu@poojamachines.co.in",
+        allottedDays: 2,
+        status: "COMPLETED",
+        startedDaysAgo: 11,
+        completedDaysAgo: 9,
+      },
+      {
+        name: "Testing and dispatch",
+        assigneeEmail: "pankaj.gupta@poojamachines.co.in",
+        allottedDays: 1,
+        status: "COMPLETED",
+        startedDaysAgo: 8,
+        completedDaysAgo: 7,
+      },
+    ],
+    notes: [
+      {
+        authorEmail: "pankaj.gupta@poojamachines.co.in",
+        body: "Loaded and away on LR 88213. Dealer confirmed receipt.",
+        daysAgo: 7,
+      },
+    ],
+  },
+];

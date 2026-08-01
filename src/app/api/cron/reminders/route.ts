@@ -15,6 +15,7 @@ import { spawnRecurringTasks } from "@/server/actions/tasks";
 import { getTaskAdmins } from "@/lib/services/tasks";
 import { taskDigestEmail } from "@/lib/email/templates";
 import { subDays } from "@/lib/utils/date";
+import { sweepOrders } from "@/lib/orders/sweep";
 import { formatDayLong, isWeekend, toDayKey, today } from "@/lib/utils/date";
 
 /**
@@ -135,6 +136,15 @@ export async function GET(request: NextRequest) {
 
     const digest = await sendTaskDigest();
 
+    /**
+     * The order sweep runs last, and outside the Promise.all above, on purpose.
+     *
+     * It re-forecasts every open order and then sends the admin one WhatsApp summary —
+     * which must reflect the state *after* today's recurring tasks were spawned and
+     * today's reminders went out, not a snapshot from before.
+     */
+    const orders = await sweepOrders();
+
     const summary = {
       date: toDayKey(now),
       dsrReminders: candidates.length,
@@ -146,6 +156,14 @@ export async function GET(request: NextRequest) {
       taskOverdue: taskReminders.overdue,
       taskReminderEmails: taskReminders.emails,
       digestsSent: digest,
+      orders: {
+        recomputed: orders.recomputed,
+        newlyAtRisk: orders.newlyAtRisk,
+        delivered: orders.delivered,
+        alertsSent: orders.alertsSent,
+        summarySent: orders.digestSent,
+        summaryVia: orders.digestVia,
+      },
       prunedNotifications,
       prunedTokens,
     };

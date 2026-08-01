@@ -72,6 +72,11 @@ export interface OrderProjection {
   currentStage: StageProjection | null;
   /** Stages that have taken longer than they were given, worst first. */
   bottlenecks: StageProjection[];
+  /**
+   * Stages that are blocked. Non-empty means the day count is a floor, not a forecast —
+   * a blocked stage resumes when somebody clears it, which nothing here can know.
+   */
+  blockedStages: StageProjection[];
   /** Working days of allotted time across the whole order. */
   totalAllotted: number;
   /** Completed stages over total, as a percentage. */
@@ -191,6 +196,21 @@ export function projectOrder(
   const remainingWork = projected.reduce((sum, stage) => sum + stage.remaining, 0);
 
   /**
+   * A blocked stage makes the order need attention, whatever the arithmetic says.
+   *
+   * This is not a rounding nicety. A blocked stage has **no known end** — it resumes
+   * when somebody clears the blocker, which could be tomorrow or next month. The
+   * day-counting above can only assume it needs the rest of its allowance, which for a
+   * stage sitting on a rejected bearing consignment produced "6 days early" on real
+   * seeded data. A forecast that reports a stopped order as comfortable is worse than no
+   * forecast, because somebody will believe it.
+   *
+   * So the days stay honest and the *status* tells the truth: a blocked order is never
+   * reported as on track.
+   */
+  const blocked = projected.filter((stage) => stage.status === "BLOCKED");
+
+  /**
    * Forecast finish.
    *
    * A completed order finishes on its last completion, not on a forecast. An order
@@ -220,8 +240,9 @@ export function projectOrder(
       ? // The promise date has gone and the work has not finished. Late is a fact now,
         // not a forecast.
         "DELAYED"
-      : slipDays > 0
-        ? "AT_RISK"
+      : slipDays > 0 || blocked.length > 0
+        ? // Either the sum says late, or something has stopped. Both need attention.
+          "AT_RISK"
         : started
           ? "IN_PROGRESS"
           : "PENDING";
@@ -238,6 +259,7 @@ export function projectOrder(
     bottlenecks: projected
       .filter((stage) => stage.overrun > 0)
       .sort((a, b) => b.overrun - a.overrun),
+    blockedStages: blocked,
     totalAllotted,
     stageCompletion: stages.length === 0 ? 0 : Math.round((completedCount / stages.length) * 100),
     weightedProgress:
@@ -261,6 +283,19 @@ export function explainProjection(projection: OrderProjection): string {
 
   if (derivedStatus === "COMPLETED") return "Delivered.";
   if (projection.stages.length === 0) return "No stages set up yet.";
+
+  /**
+   * Blocked comes first, ahead of any day count.
+   *
+   * Nothing can forecast when a blocker clears, so quoting a date here would be
+   * inventing one. The useful sentence names what has stopped and who is on it.
+   */
+  const stuck = projection.blockedStages[0];
+  if (stuck) {
+    const owner = stuck.assignees[0] ? ` (${stuck.assignees[0].name.split(" ")[0]})` : "";
+    const late = daysToPromise < 0 ? ` Already ${Math.abs(daysToPromise)} working days past the promise.` : "";
+    return `Stopped: ${stuck.name}${owner} is blocked, so the finish date cannot be forecast.${late}`;
+  }
 
   const blame = bottlenecks[0];
   const because = blame
