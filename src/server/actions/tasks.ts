@@ -35,6 +35,7 @@ import { deleteTaskFile, uploadTaskFile } from "@/lib/storage/supabase-storage";
 import { recordAudit } from "@/lib/services/audit";
 import { notify, notifyMany } from "@/lib/services/notifications";
 import { sendEmail } from "@/lib/email/mailer";
+import { emailableNow } from "@/lib/email/policy";
 import { taskAssignedEmail } from "@/lib/email/templates";
 import { recomputeOrderForTask } from "@/server/actions/orders";
 import { formError, formSuccess, type FormState } from "@/server/actions/form-state";
@@ -236,7 +237,7 @@ export async function createTaskAction(_prev: FormState, formData: FormData): Pr
     // would otherwise create a task nobody can see.
     const assignees = await prisma.user.findMany({
       where: { id: { in: input.assigneeIds }, status: "ACTIVE" },
-      select: { id: true, name: true, email: true, notifyByEmail: true },
+      select: { id: true, name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
     });
     if (assignees.length !== input.assigneeIds.length) {
       return formError("One of those people is no longer active.", {
@@ -362,7 +363,13 @@ async function announceAssignment(
   taskId: string,
   taskNumber: string,
   actor: SessionUser,
-  assignees: Array<{ id: string; name: string; email: string; notifyByEmail: boolean }>,
+  assignees: Array<{
+    id: string;
+    name: string;
+    email: string;
+    notifyByEmail: boolean;
+    emailDigestOnly: boolean;
+  }>,
   task: {
     title: string;
     description: string;
@@ -387,7 +394,8 @@ async function announceAssignment(
     })),
   );
 
-  for (const user of recipients.filter((candidate) => candidate.notifyByEmail)) {
+  // Routine: being handed a task is not an emergency, and it is in the briefing.
+  for (const user of emailableNow(recipients, "routine")) {
     await sendEmail({
       to: user.email,
       replyTo: actor.email,
@@ -562,7 +570,7 @@ async function syncAssignees(
 
   const people = await prisma.user.findMany({
     where: { id: { in: [...added, ...removed] } },
-    select: { id: true, name: true, email: true, notifyByEmail: true },
+    select: { id: true, name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
   });
   const nameOf = (id: string) => people.find((user) => user.id === id)?.name ?? "someone";
 

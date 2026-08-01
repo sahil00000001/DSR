@@ -131,6 +131,16 @@ model User {
   theme               String  @default("system")
   notifyByEmail       Boolean @default(true)
   dsrReminderOptOut   Boolean @default(false)
+  /// When true, routine emails are withheld and folded into the daily briefing instead.
+  ///
+  /// This exists because the admin decides every leave request and every expense claim, so
+  /// a normal week put eight or nine separate emails in front of one person — which is how
+  /// somebody starts filtering the lot into a folder and stops reading any of them.
+  ///
+  /// In-app notifications still fire immediately regardless: they are a badge, not an
+  /// interruption. And genuinely urgent mail still breaks through — see `emailUrgency` in
+  /// lib/email/policy.ts.
+  emailDigestOnly     Boolean @default(false)
 
   // Relations
   headedDepartments Department[]        @relation("DepartmentHead")

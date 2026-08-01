@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { sendBulkEmail } from "@/lib/email/mailer";
 import { taskDeadlineEmail } from "@/lib/email/templates";
 import { notifyMany } from "@/lib/services/notifications";
+import { shouldEmailNow } from "@/lib/email/policy";
 import {
   TASK_OPEN_STATUSES,
   TASK_PRIORITY_LABEL,
@@ -49,7 +50,15 @@ export async function sendTaskDeadlineReminders(): Promise<ReminderResult> {
     progressPercent: true,
     assignees: {
       select: {
-        user: { select: { id: true, name: true, email: true, notifyByEmail: true } },
+        user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          notifyByEmail: true,
+          emailDigestOnly: true,
+        },
+      },
       },
     },
   } as const;
@@ -99,7 +108,8 @@ export async function sendTaskDeadlineReminders(): Promise<ReminderResult> {
           href: `/tasks/${task.id}`,
         });
 
-        if (!user.notifyByEmail) continue;
+        // Already overdue is urgent; due tomorrow keeps until the evening briefing.
+        if (!shouldEmailNow(user, overdue ? "urgent" : "routine")) continue;
 
         const content = taskDeadlineEmail({
           assigneeName: user.name,

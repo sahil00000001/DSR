@@ -259,6 +259,7 @@ export const preferencesSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
   notifyByEmail: z.coerce.boolean().default(true),
   dsrReminderOptOut: z.coerce.boolean().default(false),
+  emailDigestOnly: z.coerce.boolean().default(false),
 });
 
 export const departmentSchema = z.object({

@@ -459,6 +459,8 @@ export async function nextClaimNumber(): Promise<string> {
 export async function getClaimApprovers(excludeUserId: string) {
   return prisma.user.findMany({
     where: { role: "ADMIN", status: "ACTIVE", id: { not: excludeUserId } },
-    select: { id: true, name: true, email: true, notifyByEmail: true },
+    // `emailDigestOnly` is not optional to the policy gate — omitting it here used to
+    // compile fine and silently send every claim immediately. See lib/email/policy.ts.
+    select: { id: true, name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
   });
 }

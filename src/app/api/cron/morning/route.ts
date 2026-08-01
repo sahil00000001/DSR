@@ -55,16 +55,21 @@ export async function GET(request: NextRequest) {
 
   const now = today();
 
-  if (isWeekend(now)) {
-    return NextResponse.json({ skipped: "weekend", date: toDayKey(now) });
-  }
+  // Same gated override as the evening job — see the comment there for why it exists.
+  const force = request.nextUrl.searchParams.get("force") === "1";
 
-  const holiday = await prisma.holiday.findFirst({
-    where: { date: now, type: { in: ["PUBLIC", "COMPANY"] } },
-    select: { name: true },
-  });
-  if (holiday) {
-    return NextResponse.json({ skipped: "holiday", holiday: holiday.name });
+  if (!force) {
+    if (isWeekend(now)) {
+      return NextResponse.json({ skipped: "weekend", date: toDayKey(now) });
+    }
+
+    const holiday = await prisma.holiday.findFirst({
+      where: { date: now, type: { in: ["PUBLIC", "COMPANY"] } },
+      select: { name: true },
+    });
+    if (holiday) {
+      return NextResponse.json({ skipped: "holiday", holiday: holiday.name });
+    }
   }
 
   try {

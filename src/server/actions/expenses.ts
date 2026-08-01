@@ -24,6 +24,7 @@ import { deleteReceipt, uploadReceipt } from "@/lib/storage/supabase-storage";
 import { recordAudit } from "@/lib/services/audit";
 import { notify, notifyMany } from "@/lib/services/notifications";
 import { sendEmail } from "@/lib/email/mailer";
+import { emailableNow, shouldEmailNow } from "@/lib/email/policy";
 import { expenseDecisionEmail, expenseSubmittedEmail } from "@/lib/email/templates";
 import { formError, formSuccess, type FormState } from "@/server/actions/form-state";
 
@@ -201,7 +202,8 @@ async function notifyApprovers(
     })),
   );
 
-  for (const approver of approvers.filter((candidate) => candidate.notifyByEmail)) {
+  // Routine: a claim filed at 3pm can be decided at 6pm with nothing lost.
+  for (const approver of emailableNow(approvers, "routine")) {
     await sendEmail({
       to: approver.email,
       replyTo: actor.email,
@@ -295,7 +297,7 @@ export async function decideExpenseClaimAction(
         amountMinor: true,
         category: true,
         expenseDate: true,
-        user: { select: { name: true, email: true, notifyByEmail: true } },
+        user: { select: { name: true, email: true, notifyByEmail: true, emailDigestOnly: true } },
       },
     });
     if (!claim) throw errors.notFound("That claim");
@@ -342,7 +344,9 @@ export async function decideExpenseClaimAction(
       href,
     });
 
-    if (claim.user.notifyByEmail) {
+    // The claimant hears about a decision straight away — they are waiting on the money,
+    // and a verdict batched until evening reads as being ignored.
+    if (shouldEmailNow(claim.user, "urgent")) {
       await sendEmail({
         to: claim.user.email,
         replyTo: actor.email,

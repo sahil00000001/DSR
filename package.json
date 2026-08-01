@@ -20,7 +20,9 @@
     "postinstall": "prisma generate",
     "vercel:env": "node scripts/push-env.mjs",
     "build:webpack": "prisma generate && next build --webpack",
-    "check:projection": "tsx scripts/check-projection.mts"
+    "check:projection": "tsx scripts/check-projection.mts",
+    "check:policy": "tsx --tsconfig tsconfig.scripts.json scripts/check-email-policy.mts",
+    "check": "npm run typecheck && npm run lint && npm run check:projection && npm run check:policy"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
