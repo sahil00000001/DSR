@@ -1,0 +1,16 @@
+{
+  // Used only by `npm run check:policy`, never by `next build`.
+  //
+  // Scripts under scripts/ run on plain `tsx`, outside the Next compiler, so the
+  // `server-only` marker that lib modules import cannot resolve — it is a bundler alias
+  // (next/dist/compiled/server-only), not a package. Pointing it at an empty shim here lets
+  // a script exercise server-side logic directly, while the real guard stays armed for the
+  // app: nothing in the build reads this file.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "server-only": ["./scripts/shims/server-only.ts"]
+    }
+  }
+}

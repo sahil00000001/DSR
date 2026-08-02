@@ -131,6 +131,16 @@ model User {
   theme               String  @default("system")
   notifyByEmail       Boolean @default(true)
   dsrReminderOptOut   Boolean @default(false)
+  /// When true, routine emails are withheld and folded into the daily briefing instead.
+  ///
+  /// This exists because the admin decides every leave request and every expense claim, so
+  /// a normal week put eight or nine separate emails in front of one person — which is how
+  /// somebody starts filtering the lot into a folder and stops reading any of them.
+  ///
+  /// In-app notifications still fire immediately regardless: they are a badge, not an
+  /// interruption. And genuinely urgent mail still breaks through — see `emailUrgency` in
+  /// lib/email/policy.ts.
+  emailDigestOnly     Boolean @default(false)
 
   // Relations
   headedDepartments Department[]        @relation("DepartmentHead")
@@ -1029,4 +1039,46 @@ model MessageLog {
   @@index([kind, coversDay])
   @@index([status])
   @@index([createdAt])
+}
+
+/// A paired WhatsApp device session, for the Baileys bridge.
+///
+/// ## Why the database and not the disk
+///
+/// Baileys ships `useMultiFileAuthState`, which writes the credentials and several
+/// hundred Signal protocol keys to a folder. That is fine on a laptop and wrong on
+/// every container platform: the filesystem is rebuilt on each deploy, so the session
+/// is lost and somebody has to walk to the plant office and re-scan a QR code. Worse,
+/// it fails *silently* — the service starts, reports healthy, and simply never
+/// delivers, which is discovered when the 6pm summary does not arrive.
+///
+/// Keeping the session here means a redeploy reconnects on its own. The rows are
+/// written by services/whatsapp-bridge, which talks to this database directly over
+/// `pg`; the app itself never reads them.
+///
+/// ## These rows are credentials
+///
+/// Whoever holds them can send and read WhatsApp as the paired number. They are as
+/// sensitive as a password hash and must never be exported, logged or included in a
+/// backup that travels somewhere less protected than this database.
+model WhatsappSession {
+  /// "<sessionId>:<key>" — e.g. "default:creds" or "default:pre-key-42".
+  id String @id
+
+  /// Which paired device. One row set per session, so a second number can be added
+  /// later without a schema change.
+  sessionId String
+
+  /// creds | pre-key | session | sender-key | app-state-sync-key | …
+  /// Kept as its own column so a category can be cleared without parsing ids.
+  category String
+
+  /// JSON, written with Baileys' BufferJSON replacer — binary keys survive the trip.
+  data String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([sessionId, category])
 }

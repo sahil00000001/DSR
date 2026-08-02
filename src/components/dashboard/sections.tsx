@@ -7,6 +7,7 @@ import { isManagerOrAdmin } from "@/lib/auth/rbac";
 import { getDashboardData } from "@/lib/services/analytics";
 import { getLeaveBalances, listMyLeave } from "@/lib/services/leave";
 import { countClaimsAwaitingDecision, getExpenseSnapshot } from "@/lib/services/expenses";
+import { getOrderSnapshot } from "@/lib/services/orders";
 import {
   getAdminTaskSnapshot,
   getRecentTaskActivity,
@@ -22,6 +23,7 @@ import { formatDayLong, formatDayRange, today } from "@/lib/utils/date";
 import { firstName, formatHours, formatPercent } from "@/lib/utils/format";
 import { TodayCard } from "@/components/dashboard/today-card";
 import { ExpenseCard } from "@/components/dashboard/expense-card";
+import { OrderCard } from "@/components/dashboard/order-card";
 import {
   MyTasksCard,
   TaskActivityCard,
@@ -128,6 +130,17 @@ export async function LeaveSection() {
     .reduce((sum, request) => sum + request.days, 0);
 
   return <LeaveBalanceCard balances={balances} pendingCount={pendingDays} />;
+}
+
+export async function OrdersSection() {
+  const user = await requireUser();
+  // Orders are a management surface — an employee sees their stages as tasks instead.
+  if (!isManagerOrAdmin(user)) return null;
+
+  const snapshot = await getOrderSnapshot(user);
+  if (snapshot.open === 0 && snapshot.deliveredThisMonth === 0) return null;
+
+  return <OrderCard snapshot={snapshot} />;
 }
 
 export async function MyTasksSection() {

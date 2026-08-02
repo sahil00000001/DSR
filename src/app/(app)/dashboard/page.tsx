@@ -12,6 +12,7 @@ import {
   ExpenseSection,
   LeaveSection,
   MyTasksSection,
+  OrdersSection,
   TaskActivitySection,
   TeamWorkloadSection,
   PanelFallback,
@@ -91,14 +92,20 @@ export default async function DashboardPage() {
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="min-w-0 space-y-5">
+        <div className="min-w-0 space-y-5" data-stagger>
           {/* Cheapest section, highest value — first to paint. */}
           <Suspense fallback={<TodayCardFallback />}>
             <TodaySection />
           </Suspense>
 
-          {/* No fallback: both hide themselves when there is nothing to report, and
-              a skeleton for a panel that may not appear is worse than nothing. */}
+          {/* Orders first in the main column: a promise to a customer outranks
+              anything internal, and a late one is the most expensive thing on the page.
+              No fallback — these hide themselves when there is nothing to report, and a
+              skeleton for a panel that may not appear is worse than nothing. */}
+          <Suspense fallback={null}>
+            <OrdersSection />
+          </Suspense>
+
           <Suspense fallback={null}>
             <MyTasksSection />
           </Suspense>
@@ -118,7 +125,7 @@ export default async function DashboardPage() {
           </Suspense>
         </div>
 
-        <aside className="min-w-0 space-y-5">
+        <aside className="min-w-0 space-y-5" data-stagger>
           <Suspense fallback={<PanelFallback rows={3} />}>
             <LeaveSection />
           </Suspense>

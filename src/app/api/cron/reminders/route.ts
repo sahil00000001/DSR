@@ -10,11 +10,10 @@ import { pruneExpiredTokens } from "@/lib/auth/tokens";
 import { recordSystemAudit } from "@/lib/services/audit";
 import { getReportStreak } from "@/lib/services/shell";
 import { sendTaskDeadlineReminders } from "@/lib/services/task-reminders";
-import { buildTaskDigest } from "@/lib/services/task-digest";
 import { spawnRecurringTasks } from "@/server/actions/tasks";
-import { getTaskAdmins } from "@/lib/services/tasks";
-import { taskDigestEmail } from "@/lib/email/templates";
-import { subDays } from "@/lib/utils/date";
+import { dailyBriefingEmail } from "@/lib/email/templates";
+import { buildDailyBriefing } from "@/lib/email/briefing";
+import { isDigestOnly } from "@/lib/email/policy";
 import { sweepOrders } from "@/lib/orders/sweep";
 import { formatDayLong, isWeekend, toDayKey, today } from "@/lib/utils/date";
 
@@ -40,6 +39,31 @@ export const runtime = "nodejs";
 // Bulk email is paced, so allow more than the default 10s.
 export const maxDuration = 60;
 
+/**
+ * Runs one part of the evening job, and does not let it take the others down.
+ *
+ * This job does seven unrelated things, and it used to be one long `await` chain — so the
+ * first to throw ended the run. A numbering bug in the recurring-task spawner therefore
+ * stopped the WhatsApp digest and the admin's briefing from going out at all, and the only
+ * evidence was a 500 with somebody else's error in it. The reporting is the part the
+ * client actually asked for; it must not depend on housekeeping succeeding.
+ *
+ * Each failure is logged with the step that produced it and surfaced in the response as a
+ * `failed` list, so a partial run is visible rather than looking like a clean one.
+ */
+async function step<T>(name: string, fallback: T, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    failures.push(name);
+    logger.error(`Cron step "${name}" failed`, error);
+    return fallback;
+  }
+}
+
+/** Steps that failed in the current run. Reset at the start of each request. */
+let failures: string[] = [];
+
 function isAuthorised(request: NextRequest): boolean {
   // Vercel Cron always sends the secret; a missing secret in the environment
   // means the endpoint stays closed rather than open.
@@ -53,17 +77,30 @@ export async function GET(request: NextRequest) {
   }
 
   const now = today();
+  failures = [];
 
-  if (isWeekend(now)) {
-    return NextResponse.json({ skipped: "weekend", date: toDayKey(now) });
-  }
+  /**
+   * `?force=1` runs the job on a day it would otherwise skip.
+   *
+   * Not a back door — it is still behind `CRON_SECRET`. It exists because the calendar
+   * guard below makes the endpoint unexercisable at a weekend, which is exactly when you
+   * want to confirm a fix before Monday's real run. It is also the "send it now" lever
+   * after a cron has been missed.
+   */
+  const force = request.nextUrl.searchParams.get("force") === "1";
 
-  const holiday = await prisma.holiday.findFirst({
-    where: { date: now, type: { in: ["PUBLIC", "COMPANY"] } },
-    select: { name: true },
-  });
-  if (holiday) {
-    return NextResponse.json({ skipped: "holiday", holiday: holiday.name, date: toDayKey(now) });
+  if (!force) {
+    if (isWeekend(now)) {
+      return NextResponse.json({ skipped: "weekend", date: toDayKey(now) });
+    }
+
+    const holiday = await prisma.holiday.findFirst({
+      where: { date: now, type: { in: ["PUBLIC", "COMPANY"] } },
+      select: { name: true },
+    });
+    if (holiday) {
+      return NextResponse.json({ skipped: "holiday", holiday: holiday.name, date: toDayKey(now) });
+    }
   }
 
   try {
@@ -129,18 +166,18 @@ export async function GET(request: NextRequest) {
 
     // Recurring tasks are spawned *before* reminders run, so an occurrence created
     // this morning is included in today's deadline sweep rather than waiting a day.
-    const recurrence = await spawnRecurringTasks();
+    const recurrence = await step("recurrence", { spawned: 0 }, spawnRecurringTasks);
 
     const [dsrResult, attendanceResult, prunedNotifications, prunedTokens, taskReminders] =
       await Promise.all([
-        sendBulkEmail(dsrEmails),
-        sendBulkEmail(attendanceEmails),
-        pruneOldNotifications(60),
-        pruneExpiredTokens(),
-        sendTaskDeadlineReminders(),
+        step("dsrEmails", { sent: 0, failed: 0, skipped: 0 }, () => sendBulkEmail(dsrEmails)),
+        step("attendanceEmails", { sent: 0, failed: 0, skipped: 0 }, () => sendBulkEmail(attendanceEmails)),
+        step("pruneNotifications", 0, () => pruneOldNotifications(60)),
+        step("pruneTokens", 0, () => pruneExpiredTokens()),
+        step("taskReminders", { dueSoon: 0, overdue: 0, emails: 0 }, sendTaskDeadlineReminders),
       ]);
 
-    const digest = await sendTaskDigest();
+    const briefings = await step("briefing", 0, sendDailyBriefing);
 
     /**
      * The order sweep runs last, and outside the Promise.all above, on purpose.
@@ -149,7 +186,11 @@ export async function GET(request: NextRequest) {
      * which must reflect the state *after* today's recurring tasks were spawned and
      * today's reminders went out, not a snapshot from before.
      */
-    const orders = await sweepOrders();
+    const orders = await step(
+      "orders",
+      { recomputed: 0, newlyAtRisk: 0, delivered: 0, alertsSent: 0, digestSent: false, digestVia: "failed" as string },
+      sweepOrders,
+    );
 
     const summary = {
       date: toDayKey(now),
@@ -161,7 +202,7 @@ export async function GET(request: NextRequest) {
       taskDueSoon: taskReminders.dueSoon,
       taskOverdue: taskReminders.overdue,
       taskReminderEmails: taskReminders.emails,
-      digestsSent: digest,
+      briefingsSent: briefings,
       orders: {
         recomputed: orders.recomputed,
         newlyAtRisk: orders.newlyAtRisk,
@@ -172,6 +213,8 @@ export async function GET(request: NextRequest) {
       },
       prunedNotifications,
       prunedTokens,
+      // Empty on a clean run. Present so a half-finished job cannot read as a healthy one.
+      failed: failures,
     };
 
     await recordSystemAudit({ action: "cron.reminders", entity: "system", meta: summary });
@@ -185,32 +228,44 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Sends the grouped task report to each admin.
+ * Sends the one end-of-day briefing to each manager and admin.
  *
- * The window is the last 24 hours, matching the daily cron. Sending nothing when
- * nothing happened is deliberate: a digest that arrives every evening saying "no
- * changes" trains people to delete it unread, which is exactly the failure the digest
- * exists to avoid.
+ * ## Why this replaced the task-only digest
+ *
+ * The old digest covered tasks. But the admin also decides every leave request and every
+ * expense claim, and owns every order — so a task report plus seven individual emails is
+ * still seven too many. This is one email covering the whole business, ordered by what it
+ * costs to ignore, and it is the counterpart of the `emailDigestOnly` preference: the
+ * routine mail withheld during the day lands here instead.
+ *
+ * Unlike most of the other sends, a quiet day still gets one short email. Its absence would
+ * be indistinguishable from a broken cron, and "I stopped getting them" is a much worse
+ * failure than "today was quiet".
  */
-async function sendTaskDigest(): Promise<number> {
-  const digest = await buildTaskDigest({
-    since: subDays(today(), 1),
-    label: formatDayLong(today()),
-  });
-  if (!digest) return 0;
+async function sendDailyBriefing(): Promise<number> {
+  const briefing = await buildDailyBriefing();
 
-  const admins = (await getTaskAdmins()).filter((admin) => admin.notifyByEmail);
-  if (admins.length === 0) return 0;
+  // Managers get it too — they run a line and the same information is useful to them.
+  const recipients = await prisma.user.findMany({
+    where: { status: "ACTIVE", role: { in: ["ADMIN", "MANAGER"] }, notifyByEmail: true },
+    select: { name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
+  });
+
+  if (recipients.length === 0) return 0;
+
+  const dateLabel = formatDayLong(today());
 
   const result = await sendBulkEmail(
-    admins.map((admin) => ({
-      to: admin.email,
-      content: taskDigestEmail({
-        recipientName: admin.name,
-        periodLabel: formatDayLong(today()),
-        sections: digest.sections,
-        stats: digest.stats,
-        dashboardUrl: `${env.NEXT_PUBLIC_APP_URL}/tasks`,
+    recipients.map((person) => ({
+      to: person.email,
+      content: dailyBriefingEmail({
+        recipientName: person.name,
+        dateLabel,
+        sections: briefing.sections,
+        stats: briefing.stats,
+        dashboardUrl: `${env.NEXT_PUBLIC_APP_URL}/dashboard`,
+        // Only explain the batching to people it applies to.
+        digestOnly: isDigestOnly(person),
       }),
     })),
   );

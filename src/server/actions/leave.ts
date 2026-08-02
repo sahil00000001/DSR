@@ -30,6 +30,7 @@ import { calculateLeaveDays, findOverlappingLeave, getApproversFor, getBalanceFo
 import { recordAudit } from "@/lib/services/audit";
 import { notify, notifyMany } from "@/lib/services/notifications";
 import { sendEmail } from "@/lib/email/mailer";
+import { emailableNow, shouldEmailNow } from "@/lib/email/policy";
 import { leaveDecisionEmail, leaveSubmittedEmail } from "@/lib/email/templates";
 import { formError, formSuccess, type FormState } from "@/server/actions/form-state";
 
@@ -148,7 +149,8 @@ export async function requestLeaveAction(_prev: FormState, formData: FormData): 
       })),
     );
 
-    for (const approver of approvers.filter((candidate) => candidate.notifyByEmail)) {
+    // Routine: leave is nearly always for a future date.
+    for (const approver of emailableNow(approvers, "routine")) {
       await sendEmail({
         to: approver.email,
         replyTo: actor.email,
@@ -210,7 +212,14 @@ export async function decideLeaveAction(_prev: FormState, formData: FormData): P
         days: true,
         halfDay: true,
         user: {
-          select: { id: true, name: true, email: true, managerId: true, notifyByEmail: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            managerId: true,
+            notifyByEmail: true,
+            emailDigestOnly: true,
+          },
         },
       },
     });
@@ -304,7 +313,8 @@ export async function decideLeaveAction(_prev: FormState, formData: FormData): P
       href,
     });
 
-    if (request.user.notifyByEmail) {
+    // A decision on time off changes somebody's plans, so it goes out immediately.
+    if (shouldEmailNow(request.user, "urgent")) {
       await sendEmail({
         to: request.user.email,
         replyTo: actor.email,

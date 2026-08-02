@@ -410,11 +410,29 @@ export async function getLeaveTrend(
 /** Who to notify about a request: the person's manager, or all admins. */
 export async function getApproversFor(
   userId: string,
-): Promise<Array<{ id: string; name: string; email: string; notifyByEmail: boolean }>> {
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    email: string;
+    notifyByEmail: boolean;
+    // Required by the policy gate: without it every request emails immediately.
+    emailDigestOnly: boolean;
+  }>
+> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      manager: { select: { id: true, name: true, email: true, status: true, notifyByEmail: true } },
+      manager: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          status: true,
+          notifyByEmail: true,
+          emailDigestOnly: true,
+        },
+      },
     },
   });
 
@@ -425,6 +443,7 @@ export async function getApproversFor(
         name: user.manager.name,
         email: user.manager.email,
         notifyByEmail: user.manager.notifyByEmail,
+        emailDigestOnly: user.manager.emailDigestOnly,
       },
     ];
   }
@@ -432,6 +451,6 @@ export async function getApproversFor(
   // No manager (or a disabled one) must never mean "nobody gets told".
   return prisma.user.findMany({
     where: { role: "ADMIN", status: "ACTIVE", id: { not: userId } },
-    select: { id: true, name: true, email: true, notifyByEmail: true },
+    select: { id: true, name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
   });
 }

@@ -1,0 +1,60 @@
+# Fly.io deployment for the WhatsApp bridge.
+#
+#   flyctl auth login
+#   flyctl launch --no-deploy --copy-config --name pmpl-whatsapp-bridge
+#   flyctl secrets set DATABASE_URL='…' BRIDGE_TOKEN='…' BRIDGE_WEBHOOK_SECRET='…' \
+#                      APP_WEBHOOK_URL='…' ADMIN_NUMBER='…'
+#   flyctl deploy
+#
+# Every setting below that differs from Fly's defaults is here because the default is
+# wrong for a process that must hold one WhatsApp socket open. Read the comments before
+# changing any of them.
+
+app = "pmpl-whatsapp-bridge"
+
+# Mumbai. The bridge reads its Signal keys from Supabase on the decrypt path, and that
+# database is in ap-south-1 — putting the bridge anywhere else adds a round trip to every
+# message.
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # ---------------------------------------------------------------------------
+  # The three settings that matter
+  # ---------------------------------------------------------------------------
+
+  # Fly's default is to stop a machine when traffic goes quiet. That is exactly wrong
+  # here: this service is idle by design almost all day and must still be connected at
+  # 6pm. A stopped machine is a dropped WhatsApp socket and a missed summary.
+  auto_stop_machines = false
+  auto_start_machines = false
+
+  # Exactly one. Two instances sharing one paired session fight over the socket, and
+  # WhatsApp reads that as a conflicting device — which is how a number gets restricted.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    # Liveness, not readiness. `/health` answers 200 whenever the process is up; `/ready`
+    # is the one that reports whether WhatsApp is connected.
+    #
+    # Pointing this at `/ready` would restart the container every time it failed — which
+    # includes the entire period before anyone has scanned the QR, so the pairing could
+    # never complete. Monitor `/ready` from outside; never let it drive a restart.
+    path = "/health"
+    method = "GET"
+    interval = "30s"
+    timeout = "5s"
+    # Fetching the protocol version and opening the socket takes a few seconds.
+    grace_period = "30s"
+
+[[vm]]
+  # It idles around 150 MB; 512 leaves room for a history sync on pairing without the
+  # OOM killer taking the session with it.
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

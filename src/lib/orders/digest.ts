@@ -35,6 +35,24 @@ function safe(value: string): string {
   return value.replace(/[*_~`]/g, "-");
 }
 
+/**
+ * One order, one line.
+ *
+ * ## The timing phrase is derived from the status, never from the raw day count
+ *
+ * A blocked order can have a comfortable-looking day count — the arithmetic can only assume
+ * a blocked stage needs the rest of its allowance — so reading `slipDays` directly produced
+ * lines like "at risk … 6d spare", which contradict themselves and teach the reader to
+ * distrust the whole summary. `derivedStatus` decides the wording; the number only fills it
+ * in where it means something.
+ *
+ * ## "Stuck on" names the stage that is actually stuck
+ *
+ * This used to read `bottleneckNames[0]`, which is a *historical* list and includes finished
+ * stages that ran over. The result was "stuck on Machine shop" while Machine shop was
+ * complete and Assembly was the blocked one — pointing the works manager at the wrong
+ * person. `holdingUp` excludes completed stages by construction.
+ */
 function orderLine(order: OrderDto): string {
   const { projection } = order;
   const promised = formatDayShort(order.promisedOn);
@@ -42,22 +60,27 @@ function orderLine(order: OrderDto): string {
   const timing =
     projection.derivedStatus === "DELAYED"
       ? `${Math.abs(projection.daysToPromise)}d past due`
-      : projection.slipDays > 0
-        ? `forecast ${projection.slipDays}d late`
-        : projection.slipDays < 0
-          ? `${Math.abs(projection.slipDays)}d spare`
-          : "on the date";
+      : projection.isStopped
+        ? // A blocked stage has no knowable end, so there is no date to quote.
+          "stopped — no finish date"
+        : projection.derivedStatus === "AT_RISK"
+          ? `forecast ${projection.slipDays}d late`
+        : projection.derivedStatus === "COMPLETED"
+          ? "delivered"
+          : projection.slipDays < 0
+            ? `${Math.abs(projection.slipDays)}d spare`
+            : "on the date";
 
-  // Name the stage and the person holding it up — that is the actionable part.
-  const blame = projection.bottleneckNames[0];
-  const stage = projection.currentStageName;
-  const where = blame
-    ? ` · stuck on ${safe(blame)}`
-    : stage
-      ? ` · on ${safe(stage)}`
-      : "";
+  // Who to ring. Blocked stage first, then whatever is currently running.
+  const where = projection.holdingUpName
+    ? projection.holdingUpIsLate
+      ? ` · stuck on ${safe(projection.holdingUpName)}`
+      : ` · on ${safe(projection.holdingUpName)}`
+    : "";
 
-  return `• ${order.orderNumber} ${safe(order.customerName)} — due ${promised}, ${timing}${where}`;
+  const who = projection.holdingUpOwner ? ` (${safe(projection.holdingUpOwner)})` : "";
+
+  return `• ${order.orderNumber} ${safe(order.customerName)} — due ${promised}, ${timing}${where}${who}`;
 }
 
 export interface OrderDigest {
@@ -159,17 +182,27 @@ export async function buildOrderDigest(orders?: OrderDto[]): Promise<OrderDigest
  */
 export function buildRiskAlert(order: OrderDto): string {
   const { projection } = order;
-  const blame = projection.bottleneckNames[0];
+
+  /*
+   * `holdingUpName`, not `bottleneckNames[0]`. The latter is ranked by overrun and includes
+   * finished stages, so an alert could name a stage that was already done while the actual
+   * blocker went unmentioned — the one fact the reader needed.
+   */
+  const blame = projection.holdingUpName;
+  const owner = projection.holdingUpOwner ? ` (${projection.holdingUpOwner})` : "";
 
   return [
-    `*${order.orderNumber} will be late*`,
+    projection.isStopped ? `*${order.orderNumber} is stopped*` : `*${order.orderNumber} will be late*`,
     "",
     `${safe(order.title)}`,
     `${safe(order.customerName)} · promised ${formatDayShort(order.promisedOn)}`,
-    projection.projectedOn
-      ? `Now forecast ${formatDayShort(projection.projectedOn)} — ${projection.slipDays}d late`
-      : `Forecast ${projection.slipDays}d late`,
-    blame ? `Held up on ${safe(blame)}` : "",
+    // A stopped stage has no knowable end, so quoting a date would be inventing one.
+    projection.isStopped
+      ? "No finish date until it is unblocked"
+      : projection.projectedOn
+        ? `Now forecast ${formatDayShort(projection.projectedOn)} — ${projection.slipDays}d late`
+        : `Forecast ${projection.slipDays}d late`,
+    blame ? `Held up on ${safe(blame)}${owner}` : "",
     "",
     projection.summary,
   ]

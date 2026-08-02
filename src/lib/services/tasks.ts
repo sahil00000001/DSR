@@ -1,4 +1,5 @@
 import "server-only";
+import { formatReference, parseReference } from "@/lib/services/reference";
 import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { containsInsensitive, prisma } from "@/lib/db/prisma";
@@ -1030,16 +1031,20 @@ export async function getDependencyCandidates(taskId: string | null, actor: Acto
   });
 }
 
-/** Next task reference, e.g. TSK-0043. */
+/**
+ * Next task reference, e.g. TSK-0043.
+ *
+ * Ordered by the reference, **not** by `createdAt` — a backdated row (a seed, an import)
+ * holds a high number in the middle of the timeline, so newest-by-date returned a
+ * reference that was already taken. See lib/services/reference.ts.
+ */
 export async function nextTaskNumber(): Promise<string> {
   const latest = await prisma.task.findFirst({
-    orderBy: { createdAt: "desc" },
+    orderBy: { taskNumber: "desc" },
     select: { taskNumber: true },
   });
 
-  const current = Number.parseInt(latest?.taskNumber.split("-")[1] ?? "0", 10);
-  const next = Number.isFinite(current) ? current + 1 : 1;
-  return `TSK-${String(next).padStart(4, "0")}`;
+  return formatReference("TSK", parseReference(latest?.taskNumber) + 1);
 }
 
 /** Admins to notify about task activity — the people who own the schedule. */

@@ -76,6 +76,7 @@ export async function updatePreferencesAction(
         // Mirrors the theme cookie, so a new device inherits the choice.
         theme: input.theme,
         notifyByEmail: input.notifyByEmail,
+        emailDigestOnly: input.emailDigestOnly,
         dsrReminderOptOut: input.dsrReminderOptOut,
       },
     });
@@ -85,7 +86,12 @@ export async function updatePreferencesAction(
       action: "settings.update",
       entity: "user",
       entityId: actor.id,
-      meta: { section: "preferences", theme: input.theme, email: input.notifyByEmail },
+      meta: {
+        section: "preferences",
+        theme: input.theme,
+        email: input.notifyByEmail,
+        digestOnly: input.emailDigestOnly,
+      },
     });
 
     revalidatePath("/settings");

@@ -35,6 +35,7 @@ export default async function SettingsPage() {
         theme: true,
         notifyByEmail: true,
         dsrReminderOptOut: true,
+        emailDigestOnly: true,
         passwordHash: true,
       },
     }),
@@ -122,6 +123,7 @@ export default async function SettingsPage() {
             theme: profile.theme,
             notifyByEmail: profile.notifyByEmail,
             dsrReminderOptOut: profile.dsrReminderOptOut,
+            emailDigestOnly: profile.emailDigestOnly,
           }}
           emailEnabled={isSmtpEnabled}
         />

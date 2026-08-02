@@ -70,13 +70,40 @@ export interface OrderProjection {
   derivedStatus: "PENDING" | "IN_PROGRESS" | "AT_RISK" | "DELAYED" | "COMPLETED";
   /** The stage the order is waiting on, if any. */
   currentStage: StageProjection | null;
-  /** Stages that have taken longer than they were given, worst first. */
+  /**
+   * Stages that have taken longer than they were given, worst first.
+   *
+   * **Historical, not current.** A completed stage that overran stays in this list, because
+   * it is the reason the order is behind and that is what an explanation needs. Do not use
+   * it to answer "what is it waiting on" — a finished stage is waiting on nothing. Use
+   * `holdingUp` for that.
+   */
   bottlenecks: StageProjection[];
+  /**
+   * The stage genuinely holding the order up right now, and therefore who to ring.
+   *
+   * Exists because reading `bottlenecks[0]` for this produced summaries that said "stuck on
+   * Machine shop" while Machine shop was finished and Assembly was the blocked stage. The
+   * order of preference is: a blocked stage, then the current stage, then nothing.
+   */
+  holdingUp: StageProjection | null;
+  /** True when `holdingUp` is blocked or already past its allotment. */
+  holdingUpIsLate: boolean;
   /**
    * Stages that are blocked. Non-empty means the day count is a floor, not a forecast —
    * a blocked stage resumes when somebody clears it, which nothing here can know.
    */
   blockedStages: StageProjection[];
+  /**
+   * Something is stopped, so `projectedOn` and `slipDays` are not a forecast.
+   *
+   * Callers must branch on this before showing either. It is stated here rather than
+   * re-derived per screen because every consumer that inferred it independently got it
+   * subtly wrong at least once: an order read "At risk · 6d spare", which is two true
+   * numbers making a false claim — the arithmetic can only assume a stopped stage still
+   * needs the rest of its allowance, and nothing knows when a blocker clears.
+   */
+  isStopped: boolean;
   /** Working days of allotted time across the whole order. */
   totalAllotted: number;
   /** Completed stages over total, as a percentage. */
@@ -249,6 +276,16 @@ export function projectOrder(
 
   const completedCount = projected.filter((stage) => stage.status === "COMPLETED").length;
 
+  /**
+   * What the order is actually waiting on.
+   *
+   * A blocked stage first — it is stopped, so it is the answer whatever else is true. Then
+   * whichever stage is current. Never a completed one: a finished stage cannot be holding
+   * anything up, however far over its allotment it ran.
+   */
+  const current = projected.find((stage) => stage.isCurrent) ?? null;
+  const holdingUp = allDone ? null : (blocked[0] ?? current);
+
   return {
     stages: projected,
     projectedOn,
@@ -260,6 +297,11 @@ export function projectOrder(
       .filter((stage) => stage.overrun > 0)
       .sort((a, b) => b.overrun - a.overrun),
     blockedStages: blocked,
+    // A finished order is never "stopped", however it got there.
+    isStopped: blocked.length > 0 && !allDone,
+    holdingUp: holdingUp,
+    holdingUpIsLate:
+      holdingUp !== null && (holdingUp.status === "BLOCKED" || holdingUp.overrun > 0),
     totalAllotted,
     stageCompletion: stages.length === 0 ? 0 : Math.round((completedCount / stages.length) * 100),
     weightedProgress:

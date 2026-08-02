@@ -1,4 +1,5 @@
 import "server-only";
+import { formatReference, parseReference } from "@/lib/services/reference";
 import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { containsInsensitive, prisma } from "@/lib/db/prisma";
@@ -443,22 +444,28 @@ export async function getOutstandingByEmployee(actor: Actor) {
     .sort((a, b) => b.totalMinor - a.totalMinor);
 }
 
-/** Next claim reference, e.g. EXP-0043. */
+/**
+ * Next claim reference, e.g. EXP-0043.
+ *
+ * Ordered by the reference, **not** by `createdAt` — a backdated row (a seed, an import)
+ * holds a high number in the middle of the timeline, so newest-by-date returned a
+ * reference that was already taken. See lib/services/reference.ts.
+ */
 export async function nextClaimNumber(): Promise<string> {
   const latest = await prisma.expenseClaim.findFirst({
-    orderBy: { createdAt: "desc" },
+    orderBy: { claimNumber: "desc" },
     select: { claimNumber: true },
   });
 
-  const current = Number.parseInt(latest?.claimNumber.split("-")[1] ?? "0", 10);
-  const next = Number.isFinite(current) ? current + 1 : 1;
-  return `EXP-${String(next).padStart(4, "0")}`;
+  return formatReference("EXP", parseReference(latest?.claimNumber) + 1);
 }
 
 /** Admins to notify when a claim is submitted. */
 export async function getClaimApprovers(excludeUserId: string) {
   return prisma.user.findMany({
     where: { role: "ADMIN", status: "ACTIVE", id: { not: excludeUserId } },
-    select: { id: true, name: true, email: true, notifyByEmail: true },
+    // `emailDigestOnly` is not optional to the policy gate — omitting it here used to
+    // compile fine and silently send every claim immediately. See lib/email/policy.ts.
+    select: { id: true, name: true, email: true, notifyByEmail: true, emailDigestOnly: true },
   });
 }

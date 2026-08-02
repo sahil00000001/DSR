@@ -220,6 +220,12 @@ console.log("\n=== A blocked stage is never reported as on track ===");
     `${blocked.derivedStatus}, slip ${blocked.slipDays}`,
   );
   check("and the slip arithmetic stays honest", blocked.slipDays < 0, `${blocked.slipDays}`);
+
+  /*
+   * `isStopped` exists so no screen has to re-derive this. Every consumer that inferred it
+   * for itself eventually shipped "At risk · 6d spare" — two true numbers, one false claim.
+   */
+  check("the projection says outright that it is stopped", blocked.isStopped === true);
   check(
     "the explanation leads with the block, not a date",
     explainProjection(blocked).startsWith("Stopped:") &&
@@ -258,6 +264,7 @@ console.log("\n=== A blocked stage is never reported as on track ===");
     unblocked.derivedStatus,
   );
   check("and no blocked stages remain", unblocked.blockedStages.length === 0);
+  check("so the forecast becomes quotable again", unblocked.isStopped === false);
 
   // Blocked *and* past the promise is DELAYED, not merely at risk.
   const blockedAndLate = projectOrder(
@@ -271,6 +278,111 @@ console.log("\n=== A blocked stage is never reported as on track ===");
     explainProjection(blockedAndLate).includes("past the promise"),
     explainProjection(blockedAndLate),
   );
+}
+
+console.log("\n=== `holdingUp` never names a finished stage ===");
+{
+  /**
+   * The bug this covers reached the WhatsApp summary and pointed the works manager at the
+   * wrong person: reading `bottlenecks[0]` produced "stuck on Machine shop" while Machine
+   * shop was complete and Assembly was the blocked stage.
+   */
+  const overranThenBlocked = projectOrder(
+    { promisedOn: day("2026-08-21"), startedOn: MON },
+    [
+      stage({
+        position: 1,
+        name: "Machine shop",
+        allottedDays: 2,
+        status: "COMPLETED",
+        startedAt: MON,
+        // Mon–Wed is 3 working days against 2 allotted, so it overran by 1.
+        completedAt: day("2026-08-05"),
+        progressPercent: 100,
+        assignees: [{ id: "u1", name: "Satish Chandra Dubey" }],
+      }),
+      stage({
+        position: 2,
+        name: "Assembly",
+        allottedDays: 3,
+        status: "BLOCKED",
+        startedAt: day("2026-08-06"),
+        assignees: [{ id: "u2", name: "Ramesh Kumar Sahu" }],
+      }),
+      stage({ position: 3, name: "Final testing" }),
+    ],
+    { asOf: day("2026-08-10") },
+  );
+
+  check(
+    "the completed stage is still listed as a historical bottleneck",
+    overranThenBlocked.bottlenecks.some((s) => s.name === "Machine shop"),
+    overranThenBlocked.bottlenecks.map((s) => s.name).join(", "),
+  );
+  check(
+    "but holdingUp names the blocked stage, not the finished one",
+    overranThenBlocked.holdingUp?.name === "Assembly",
+    overranThenBlocked.holdingUp?.name,
+  );
+  check("and flags it as late", overranThenBlocked.holdingUpIsLate === true);
+  check(
+    "so the owner to ring is the blocked one",
+    overranThenBlocked.holdingUp?.assignees[0]?.name === "Ramesh Kumar Sahu",
+    overranThenBlocked.holdingUp?.assignees[0]?.name,
+  );
+
+  // An on-track order whose *earlier* stage overran must not read as stuck.
+  const overranButFine = projectOrder(
+    { promisedOn: day("2026-08-28"), startedOn: MON },
+    [
+      stage({
+        position: 1,
+        name: "Motor winding",
+        allottedDays: 1,
+        status: "COMPLETED",
+        startedAt: MON,
+        completedAt: day("2026-08-05"),
+        progressPercent: 100,
+      }),
+      stage({
+        position: 2,
+        name: "Blade balancing",
+        allottedDays: 5,
+        status: "IN_PROGRESS",
+        startedAt: day("2026-08-10"),
+        progressPercent: 20,
+      }),
+    ],
+    { asOf: day("2026-08-11") },
+  );
+  check(
+    "an on-track order points at the running stage",
+    overranButFine.holdingUp?.name === "Blade balancing",
+    overranButFine.holdingUp?.name,
+  );
+  check(
+    "and does not claim it is stuck",
+    overranButFine.holdingUpIsLate === false,
+    `late=${overranButFine.holdingUpIsLate}`,
+  );
+
+  // A delivered order is waiting on nothing at all.
+  const delivered = projectOrder(
+    { promisedOn: day("2026-08-21"), startedOn: MON },
+    [
+      stage({
+        position: 1,
+        name: "Everything",
+        status: "COMPLETED",
+        startedAt: MON,
+        completedAt: day("2026-08-05"),
+        progressPercent: 100,
+      }),
+    ],
+    { asOf: day("2026-08-10") },
+  );
+  check("a delivered order holds nothing up", delivered.holdingUp === null);
+  check("and is not flagged late", delivered.holdingUpIsLate === false);
 }
 
 console.log("\n=== Edge cases that would produce a wrong date ===");

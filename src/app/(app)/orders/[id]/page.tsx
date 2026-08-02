@@ -211,7 +211,16 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 <p className="text-[10.5px] font-semibold tracking-wide text-fg-subtle uppercase">
                   Forecast
                 </p>
-                {projection.projectedOn ? (
+                {projection.isStopped ? (
+                  /* A stopped stage has no knowable end, so there is no date to give.
+                     Showing the arithmetic here read "(6d early)" on a blocked order. */
+                  <p className="font-medium text-warning-text">
+                    Stopped
+                    <span className="ml-1 font-normal text-fg-subtle">
+                      (no finish date until it is unblocked)
+                    </span>
+                  </p>
+                ) : projection.projectedOn ? (
                   <p
                     className={cn(
                       "font-medium",

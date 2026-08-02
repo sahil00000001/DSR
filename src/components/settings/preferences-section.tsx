@@ -25,7 +25,12 @@ export function PreferencesSection({
   defaults,
   emailEnabled,
 }: {
-  defaults: { theme: string; notifyByEmail: boolean; dsrReminderOptOut: boolean };
+  defaults: {
+    theme: string;
+    notifyByEmail: boolean;
+    dsrReminderOptOut: boolean;
+    emailDigestOnly: boolean;
+  };
   emailEnabled: boolean;
 }) {
   const router = useRouter();
@@ -35,6 +40,7 @@ export function PreferencesSection({
 
   const [notifyByEmail, setNotifyByEmail] = useState(defaults.notifyByEmail);
   const [remindersOff, setRemindersOff] = useState(defaults.dsrReminderOptOut);
+  const [digestOnly, setDigestOnly] = useState(defaults.emailDigestOnly);
 
   useEffect(() => {
     if (state.ok === true) {
@@ -53,6 +59,7 @@ export function PreferencesSection({
         <input type="hidden" name="theme" value={theme} />
         {notifyByEmail ? <input type="hidden" name="notifyByEmail" value="true" /> : null}
         {remindersOff ? <input type="hidden" name="dsrReminderOptOut" value="true" /> : null}
+        {digestOnly ? <input type="hidden" name="emailDigestOnly" value="true" /> : null}
 
         <CardHeader>
           <CardTitle>Appearance &amp; notifications</CardTitle>
@@ -85,12 +92,26 @@ export function PreferencesSection({
               label="Daily report reminders"
               description="A nudge late in the afternoon if your status report is still open."
             />
+
+            {/* The answer to "I get too many emails from this thing". */}
+            <Switch
+              checked={digestOnly}
+              onChange={(event) => setDigestOnly(event.target.checked)}
+              disabled={!emailEnabled || !notifyByEmail}
+              label="One email a day instead of many"
+              description={
+                digestOnly
+                  ? "Leave requests, expense claims and task updates are collected into one end-of-day briefing. Anything urgent — an order about to miss its date, somebody blocked — still reaches you straight away."
+                  : "Every request and update is emailed as it happens. Turn this on to receive one briefing at the end of the day instead."
+              }
+            />
           </div>
         </CardContent>
 
         <CardFooter>
           <p className="text-[11.5px] text-fg-subtle">
-            You&apos;ll always see in-app notifications for things that need a decision.
+            You&apos;ll always see in-app notifications for things that need a decision,
+            whichever email setting you choose.
           </p>
           <Button type="submit" variant="primary" size="sm" loading={pending}>
             <Save className="size-4" />

@@ -280,6 +280,16 @@ async function main() {
         theme: index % 4 === 0 ? "dark" : "system",
         notifyByEmail: true,
         dsrReminderOptOut: index === 16, // one person has opted out
+        /**
+         * Admins default to one briefing a day.
+         *
+         * An owner-manager of a twenty-person plant approves most of what moves
+         * through here. Emailing each approval individually is how a mailbox
+         * becomes something you stop reading — and then the one message that
+         * mattered is missed too. Urgent things still go out immediately; see
+         * lib/email/policy.ts.
+         */
+        emailDigestOnly: person.role === "ADMIN",
       },
     });
 

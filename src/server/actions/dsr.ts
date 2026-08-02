@@ -11,6 +11,7 @@ import { differenceInDays, formatDay, isWeekend, parseDayKey, toDayKey, today } 
 import { recordAudit } from "@/lib/services/audit";
 import { notify, notifyMany } from "@/lib/services/notifications";
 import { sendEmail } from "@/lib/email/mailer";
+import { shouldEmailNow } from "@/lib/email/policy";
 import { dsrReviewedEmail } from "@/lib/email/templates";
 import { formError, formSuccess, type FormState } from "@/server/actions/form-state";
 
@@ -178,7 +179,14 @@ export async function reviewDsrAction(_prev: FormState, formData: FormData): Pro
         date: true,
         status: true,
         user: {
-          select: { id: true, name: true, email: true, managerId: true, notifyByEmail: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            managerId: true,
+            notifyByEmail: true,
+            emailDigestOnly: true,
+          },
         },
       },
     });
@@ -227,7 +235,8 @@ export async function reviewDsrAction(_prev: FormState, formData: FormData): Pro
       href,
     });
 
-    if (report.user.notifyByEmail) {
+    // Routine: a review comment keeps until the evening.
+    if (shouldEmailNow(report.user, "routine")) {
       await sendEmail({
         to: report.user.email,
         replyTo: actor.email,
@@ -290,7 +299,16 @@ export async function bulkReviewDsrAction(input: {
       select: {
         id: true,
         date: true,
-        user: { select: { id: true, name: true, email: true, managerId: true, notifyByEmail: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            managerId: true,
+            notifyByEmail: true,
+            emailDigestOnly: true,
+          },
+        },
       },
     });
 

@@ -1085,3 +1085,216 @@ export function taskDigestEmail({
     ].join("\n"),
   };
 }
+
+// ---------------------------------------------------------------------------
+//  The daily briefing
+// ---------------------------------------------------------------------------
+
+interface BriefingItemView {
+  label: string;
+  text: string;
+  meta?: string;
+  url?: string;
+  children?: Array<{ text: string; meta?: string; late?: boolean }>;
+}
+
+interface BriefingSectionView {
+  heading: string;
+  tone: "critical" | "warning" | "neutral" | "good";
+  note?: string;
+  items: BriefingItemView[];
+}
+
+/**
+ * One email a day, replacing eight.
+ *
+ * ## Why it looks like this
+ *
+ * It is read on a phone, in the evening, by somebody who has been on a factory floor all
+ * day. So it is a scannable list, not a report: a five-figure strip at the top for the
+ * shape of the day, then sections in descending order of what it costs to ignore them.
+ *
+ * The order section nests one level to show each stage's days-used against days-allotted,
+ * because that is the only place where the detail changes what he would do — everything
+ * else is one line per thing.
+ *
+ * Severity is carried by a left border and a label, never by colour alone. Plenty of people
+ * read mail with images off and in high-contrast modes, and "critical" has to survive that.
+ */
+export function dailyBriefingEmail({
+  recipientName,
+  dateLabel,
+  sections,
+  stats,
+  dashboardUrl,
+  digestOnly,
+}: {
+  recipientName: string;
+  dateLabel: string;
+  sections: BriefingSectionView[];
+  stats: {
+    ordersOpen: number;
+    ordersLate: number;
+    awaitingDecision: number;
+    blocked: number;
+    completedToday: number;
+    absent: number;
+  };
+  dashboardUrl: string;
+  /** True when this email is the only one they will have received today. */
+  digestOnly: boolean;
+}): EmailContent {
+  const toneColour: Record<BriefingSectionView["tone"], string> = {
+    critical: "#991b1b",
+    warning: "#92400e",
+    neutral: BRAND.muted,
+    good: "#047857",
+  };
+
+  const toneRule: Record<BriefingSectionView["tone"], string> = {
+    critical: "#dc2626",
+    warning: "#d97706",
+    neutral: BRAND.border,
+    good: "#059669",
+  };
+
+  const statCell = (label: string, value: number, alarming = false) =>
+    `<td width="16%" style="padding:0 5px 0 0;vertical-align:top;">` +
+    `<div style="border:1px solid ${
+      alarming && value > 0 ? "#fecaca" : BRAND.border
+    };border-radius:8px;padding:9px 6px;text-align:center;background:${
+      alarming && value > 0 ? "#fef2f2" : BRAND.surface
+    };">` +
+    `<div style="font-family:${FONT};font-size:19px;font-weight:600;line-height:1;color:${
+      alarming && value > 0 ? "#991b1b" : BRAND.ink
+    };">${value}</div>` +
+    `<div style="font-family:${FONT};font-size:9.5px;color:${BRAND.muted};margin-top:4px;text-transform:uppercase;letter-spacing:0.03em;">${escapeHtml(
+      label,
+    )}</div>` +
+    `</div></td>`;
+
+  const itemHtml = (item: BriefingItemView, tone: BriefingSectionView["tone"]) => {
+    const label = item.url
+      ? `<a href="${item.url}" style="color:${BRAND.accent};text-decoration:none;font-weight:600;">${escapeHtml(
+          item.label,
+        )}</a>`
+      : `<strong style="color:${BRAND.ink};">${escapeHtml(item.label)}</strong>`;
+
+    const children = (item.children ?? [])
+      .map(
+        (child) =>
+          `<tr><td style="padding:2px 0 2px 14px;font-family:${FONT};font-size:12px;color:${
+            child.late ? "#991b1b" : BRAND.muted
+          };">` +
+          `<span style="color:${BRAND.border};">└</span> ${escapeHtml(child.text)}` +
+          (child.meta
+            ? ` <span style="color:${child.late ? "#b91c1c" : BRAND.muted};">· ${escapeHtml(
+                child.meta,
+              )}</span>`
+            : "") +
+          `</td></tr>`,
+      )
+      .join("");
+
+    return (
+      `<tr><td style="padding:8px 0 8px 12px;border-left:3px solid ${
+        toneRule[tone]
+      };border-bottom:1px solid ${BRAND.border};font-family:${FONT};">` +
+      `<div style="font-size:13.5px;line-height:19px;">${label} <span style="color:${BRAND.body};">${escapeHtml(
+        item.text,
+      )}</span></div>` +
+      (item.meta
+        ? `<div style="margin-top:2px;font-size:11.5px;color:${BRAND.muted};">${escapeHtml(
+            item.meta,
+          )}</div>`
+        : "") +
+      (children
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:5px;border-collapse:collapse;">${children}</table>`
+        : "") +
+      `</td></tr>`
+    );
+  };
+
+  const sectionHtml = sections
+    .map((section) =>
+      [
+        `<div style="margin:22px 0 6px;font-family:${FONT};font-size:11.5px;font-weight:700;color:${
+          toneColour[section.tone]
+        };text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(section.heading)} (${section.items.length})</div>`,
+        section.note
+          ? `<div style="margin:0 0 8px;font-family:${FONT};font-size:11.5px;color:${BRAND.muted};">${escapeHtml(
+              section.note,
+            )}</div>`
+          : "",
+        `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">`,
+        section.items.map((item) => itemHtml(item, section.tone)).join(""),
+        `</table>`,
+      ].join(""),
+    )
+    .join("");
+
+  const headline =
+    stats.ordersLate > 0
+      ? stats.ordersLate === 1
+        ? "1 order will miss its date"
+        : `${stats.ordersLate} orders will miss their dates`
+      : stats.awaitingDecision > 0
+        ? `${stats.awaitingDecision} thing${stats.awaitingDecision === 1 ? "" : "s"} waiting on you`
+        : "Nothing needs a decision";
+
+  return {
+    subject: `${dateLabel} — ${headline}`,
+    html: layout({
+      preheader:
+        `${stats.ordersOpen} open · ${stats.ordersLate} at risk · ${stats.awaitingDecision} to decide · ` +
+        `${stats.blocked} blocked · ${stats.completedToday} finished`,
+      heading: `Where things stand — ${escapeHtml(dateLabel)}`,
+      body: [
+        paragraph(`Hi ${escapeHtml(firstWord(recipientName))},`),
+
+        `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;margin:0 0 6px;"><tr>`,
+        statCell("Orders", stats.ordersOpen),
+        statCell("At risk", stats.ordersLate, true),
+        statCell("To decide", stats.awaitingDecision),
+        statCell("Blocked", stats.blocked, true),
+        statCell("Done", stats.completedToday),
+        statCell("Not in", stats.absent),
+        `</tr></table>`,
+
+        sections.length > 0
+          ? sectionHtml
+          : paragraph(
+              `<span style="color:${BRAND.muted};">A quiet day — nothing late, nothing waiting on you, and nobody blocked.</span>`,
+            ),
+
+        button("Open the portal", dashboardUrl),
+
+        digestOnly
+          ? paragraph(
+              `<span style="color:${BRAND.muted};font-size:12px;">This is your one email for the day: leave requests, expense claims and task updates are collected here rather than sent one at a time. Urgent things — an order about to miss its date, somebody blocked — still reach you straight away. You can change that under Settings.</span>`,
+            )
+          : "",
+      ].join(""),
+    }),
+    text: [
+      `Where things stand — ${dateLabel}`,
+      "",
+      `Open orders: ${stats.ordersOpen}   At risk: ${stats.ordersLate}   To decide: ${stats.awaitingDecision}`,
+      `Blocked: ${stats.blocked}   Finished today: ${stats.completedToday}   Not in: ${stats.absent}`,
+      "",
+      ...(sections.length === 0
+        ? ["A quiet day — nothing late, nothing waiting on you, and nobody blocked."]
+        : sections.flatMap((section) => [
+            `${section.heading.toUpperCase()} (${section.items.length})`,
+            ...section.items.flatMap((item) => [
+              `  ${item.label}  ${item.text}${item.meta ? `  [${item.meta}]` : ""}`,
+              ...(item.children ?? []).map(
+                (child) => `      - ${child.text}${child.meta ? ` (${child.meta})` : ""}`,
+              ),
+            ]),
+            "",
+          ])),
+      dashboardUrl,
+    ].join("\n"),
+  };
+}
