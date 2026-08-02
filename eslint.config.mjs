@@ -21,6 +21,9 @@ const config = [
       "public/sw.js",
       // Generated at build time.
       "next-env.d.ts",
+      // Standalone services with their own dependencies and tsconfig — linting them
+      // here applies Next and React rules to a Node daemon that has neither.
+      "services/**",
     ],
   },
 

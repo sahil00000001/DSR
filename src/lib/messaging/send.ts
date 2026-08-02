@@ -30,9 +30,14 @@ import type { MessageKind } from "@/lib/constants/enums";
  *
  * ## Why there is still an abstraction
  *
- * `MESSAGING_PROVIDER` picks between Meta's Cloud API (`cloud`, the default choice —
- * runs from Vercel with one fetch, no server, no ban risk), a self-hosted OpenWA
- * gateway (`openwa`), Telegram (`telegram`, free forever), and `none` (log only).
+ * `MESSAGING_PROVIDER` picks between Meta's Cloud API (`cloud` — runs from Vercel with
+ * one fetch, no server, no ban risk), a self-hosted Baileys bridge (`baileys` — free,
+ * unofficial, needs a box), a self-hosted OpenWA gateway (`openwa`), Telegram
+ * (`telegram`, free forever), and `none` (log only).
+ *
+ * `baileys` and `openwa` both pair as a linked device, so there is no service window and
+ * no template: the full digest simply goes out, every time, at no cost. `sendSummary`
+ * below special-cases only `cloud` for that reason.
  *
  * OpenWA is kept working but is not the recommended path: it drives a headless Chromium
  * with a scanned QR session, so it **cannot run on Vercel** — it needs a separate
@@ -71,6 +76,19 @@ export function toDigits(raw: string): string {
 /** WhatsApp addresses a chat as `<countrycode><number>@c.us`. OpenWA wants this form. */
 export function toChatId(raw: string): string {
   return `${toDigits(raw)}@c.us`;
+}
+
+/**
+ * The multi-device protocol's own address form, which Baileys uses.
+ *
+ * Not interchangeable with `@c.us` above, despite how similar they look: `@c.us` is the
+ * legacy web-client form that browser-driving libraries kept. Sending a `@c.us` jid
+ * through Baileys fails in a way that reports as a timeout, which reads like the bridge
+ * being down. The bridge builds the jid itself; this exists so nothing here is tempted to
+ * reuse the wrong one.
+ */
+export function toJid(raw: string): string {
+  return `${toDigits(raw)}@s.whatsapp.net`;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +241,56 @@ async function cloudPost(payload: unknown, billable: boolean): Promise<SendResul
   }
 }
 
+/**
+ * Sends through the self-hosted Baileys bridge.
+ *
+ * The bridge holds the WhatsApp socket; this is one authenticated POST to it. Nothing
+ * about the protocol lives in the app, which is the point — the piece that cannot run on
+ * Vercel is the only piece that runs elsewhere.
+ *
+ * The bridge distinguishes its own failures from WhatsApp's: 502 means it is up but the
+ * message would not go, 401 means the token is wrong, and a timeout means the box is
+ * gone. All three read very differently at 6pm, so the error keeps the status code.
+ */
+async function baileysText(to: string, text: string): Promise<SendResult> {
+  const base = env.BAILEYS_BRIDGE_URL!.replace(/\/$/, "");
+
+  try {
+    const response = await fetch(`${base}/send`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.BAILEYS_BRIDGE_TOKEN}`,
+      },
+      body: JSON.stringify({ to: toDigits(to), text }),
+      /*
+       * Generous, because the bridge may be reconnecting when this lands — WhatsApp drops
+       * the socket routinely and a reconnect takes a few seconds. Failing at 10s would
+       * turn an ordinary reconnect into a missed summary.
+       */
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    const raw = await response.text();
+
+    if (!response.ok) {
+      let detail = raw.slice(0, 300);
+      try {
+        const parsed = JSON.parse(raw) as { error?: string };
+        if (parsed.error) detail = parsed.error;
+      } catch {
+        // Not JSON — a proxy or the platform answered, so the raw body is the better clue.
+      }
+      return { ok: false, error: `HTTP ${response.status}: ${detail}` };
+    }
+
+    const body = JSON.parse(raw) as { id?: string };
+    return { ok: true, externalId: body.id };
+  } catch (error) {
+    return { ok: false, error: describe(error) };
+  }
+}
+
 async function openWaText(to: string, text: string): Promise<SendResult> {
   const base = env.OPENWA_BASE_URL!.replace(/\/$/, "");
   const url = `${base}/api/sessions/${env.OPENWA_SESSION_ID}/messages/send-text`;
@@ -358,11 +426,13 @@ export async function sendMessage({
   const result =
     provider === "cloud"
       ? await cloudText(recipient, text)
-      : provider === "openwa"
-        ? await openWaText(recipient, text)
-        : provider === "telegram"
-          ? await telegramText(recipient, text)
-          : { ok: false, error: "No provider selected." };
+      : provider === "baileys"
+        ? await baileysText(recipient, text)
+        : provider === "openwa"
+          ? await openWaText(recipient, text)
+          : provider === "telegram"
+            ? await telegramText(recipient, text)
+            : { ok: false, error: "No provider selected." };
 
   await finish(log.id, result, kind, provider);
   return result;
@@ -517,6 +587,24 @@ export function verifyCloudSignature(rawBody: string, header: string | null): bo
   if (!env.WHATSAPP_APP_SECRET || !header) return false;
 
   const expected = createHmac("sha256", env.WHATSAPP_APP_SECRET).update(rawBody).digest("hex");
+  const received = header.replace(/^sha256=/, "");
+
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(received, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Verifies a forwarded message from the Baileys bridge.
+ *
+ * The bridge signs the exact bytes it posts. Without this the webhook would act on
+ * anything that reached the URL — and what it acts on is a request to read out the
+ * company's whole order book.
+ */
+export function verifyBridgeSignature(rawBody: string, header: string | null): boolean {
+  if (!env.BAILEYS_WEBHOOK_SECRET || !header) return false;
+
+  const expected = createHmac("sha256", env.BAILEYS_WEBHOOK_SECRET).update(rawBody).digest("hex");
   const received = header.replace(/^sha256=/, "");
 
   const a = Buffer.from(expected, "hex");

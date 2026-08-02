@@ -116,10 +116,30 @@ const schema = z.object({
    * session, and Vercel functions are ephemeral with a read-only filesystem. It runs on
    * a separate always-on host and this app talks to it over HTTP. See docs/WHATSAPP.md.
    */
-  MESSAGING_PROVIDER: z.enum(["none", "openwa", "cloud", "telegram"]).default("none"),
+  MESSAGING_PROVIDER: z
+    .enum(["none", "baileys", "openwa", "cloud", "telegram"])
+    .default("none"),
 
   /** Where the summary goes. Digits with country code, no plus: 919876543210. */
   MESSAGING_ADMIN_NUMBER: z.string().optional(),
+
+  /**
+   * Baileys — a self-hosted bridge speaking WhatsApp's real multi-device protocol.
+   *
+   * Free with no per-message cost and no Meta approval, which is why it is here. The
+   * trade is that it is unofficial: it pairs as a linked device, so WhatsApp's terms
+   * apply to the company's own number and a number can be restricted. Use a dedicated
+   * SIM, not the proprietor's personal one. See docs/WHATSAPP.md for the comparison.
+   *
+   * Like OpenWA it **cannot run on Vercel** — it holds a WebSocket and a device session,
+   * and serverless functions are frozen between requests. It runs as a separate service
+   * (services/whatsapp-bridge) that this app calls over HTTP.
+   */
+  BAILEYS_BRIDGE_URL: optionalUrl,
+  /** Bearer token for the bridge's /send. The only thing guarding the account. */
+  BAILEYS_BRIDGE_TOKEN: z.string().optional(),
+  /** Shared secret the bridge signs forwarded inbound messages with. */
+  BAILEYS_WEBHOOK_SECRET: z.string().optional(),
 
   // OpenWA — self-hosted gateway
   OPENWA_BASE_URL: optionalUrl,
@@ -211,6 +231,8 @@ export const isSupabaseConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_SEC
  */
 export const isMessagingEnabled = (() => {
   switch (env.MESSAGING_PROVIDER) {
+    case "baileys":
+      return Boolean(env.BAILEYS_BRIDGE_URL && env.BAILEYS_BRIDGE_TOKEN);
     case "openwa":
       return Boolean(env.OPENWA_BASE_URL && env.OPENWA_API_KEY && env.OPENWA_SESSION_ID);
     case "cloud":

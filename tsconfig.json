@@ -40,6 +40,11 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    // services/ holds standalone processes that cannot run on Vercel and are therefore
+    // not part of this compilation — each has its own tsconfig, dependencies and
+    // lifecycle. Left in, the app's typecheck fails on imports it has no reason to
+    // resolve, and `next build` would try to bundle a WebSocket daemon.
+    "services"
   ]
 }

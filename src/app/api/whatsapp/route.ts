@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import {
   logInbound,
   sendMessage,
+  verifyBridgeSignature,
   verifyCloudSignature,
   verifyOpenWaSignature,
 } from "@/lib/messaging/send";
@@ -29,8 +30,11 @@ import {
  * ## Two verbs, both required by Meta
  *
  *   GET  — the subscription handshake. Meta sends `hub.challenge` and expects it echoed
- *          back as plain text, with the `hub.verify_token` matching ours.
- *   POST — the messages, signed with `X-Hub-Signature-256` over the **raw** body.
+ *          back as plain text, with the `hub.verify_token` matching ours. Only the Cloud
+ *          API uses this; the self-hosted bridges just POST.
+ *   POST — the messages, signed over the **raw** body: `X-Hub-Signature-256` from Meta,
+ *          `X-Bridge-Signature` from the Baileys bridge. Each provider's signature is
+ *          checked with its own secret, and an unrecognised provider is never trusted.
  *
  * ## Always 200 on POST
  *
@@ -132,6 +136,32 @@ function parseCloudPayload(body: unknown): Inbound[] {
   return out;
 }
 
+/**
+ * The Baileys bridge's payload, which is the one shape here we define ourselves.
+ *
+ * It is flat and already filtered: the bridge drops its own echoes, group traffic and
+ * empty messages before forwarding, because doing that next to the socket is cheaper than
+ * shipping every read receipt across the internet to be discarded here. Still validated
+ * rather than trusted — a signature proves who sent it, not that the contents are sane.
+ */
+function parseBridgePayload(body: unknown): Inbound[] {
+  const root = body as { messages?: Array<{ from?: unknown; text?: unknown; externalId?: unknown }> };
+  if (!Array.isArray(root.messages)) return [];
+
+  const out: Inbound[] = [];
+
+  for (const message of root.messages) {
+    if (typeof message?.from !== "string" || typeof message.text !== "string") continue;
+    out.push({
+      from: message.from,
+      text: message.text,
+      externalId: typeof message.externalId === "string" ? message.externalId : undefined,
+    });
+  }
+
+  return out;
+}
+
 /** OpenWA's inbound shape is undocumented, so try the plausible field paths. */
 function parseOpenWaPayload(body: unknown): Inbound[] {
   const root = body as Record<string, unknown>;
@@ -193,6 +223,12 @@ export async function POST(request: NextRequest) {
       logger.warn("Rejected an unsigned WhatsApp webhook");
       return NextResponse.json({ error: "Bad signature" }, { status: 401 });
     }
+  } else if (provider === "baileys") {
+    const signature = request.headers.get("x-bridge-signature");
+    if (!verifyBridgeSignature(raw, signature)) {
+      logger.warn("Rejected an unsigned bridge webhook");
+      return NextResponse.json({ error: "Bad signature" }, { status: 401 });
+    }
   } else if (provider === "openwa") {
     const signature =
       request.headers.get("x-openwa-signature") ?? request.headers.get("x-hub-signature-256");
@@ -214,7 +250,11 @@ export async function POST(request: NextRequest) {
   }
 
   const messages =
-    provider === "cloud" ? parseCloudPayload(parsed) : parseOpenWaPayload(parsed);
+    provider === "cloud"
+      ? parseCloudPayload(parsed)
+      : provider === "baileys"
+        ? parseBridgePayload(parsed)
+        : parseOpenWaPayload(parsed);
 
   // Status callbacks and read receipts land here constantly and carry no messages.
   if (messages.length === 0) return NextResponse.json({ ok: true, messages: 0 });

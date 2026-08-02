@@ -40,10 +40,37 @@ nudge that makes the next fortnight free.
 
 ---
 
-## Why not the unofficial route
+## Two routes, both supported
 
-An earlier plan used [OpenWA](https://github.com/rmyndharis/OpenWA), a self-hosted
-gateway. It was rejected on evidence, not preference:
+There is an official channel and an unofficial one, and the choice is a real trade rather
+than a right answer. Both are implemented; switching is one environment variable.
+
+| | `cloud` — Meta official | `baileys` — self-hosted |
+|---|---|---|
+| Per message | ₹0 in-window, ~₹0.115 outside | ₹0 |
+| Hosting | none, runs from Vercel | a box, ~₹350–550/month |
+| To set up | business verification, a template | scan a QR |
+| Number can be banned | no | **yes** |
+| Content limits | templates outside the 24h window | none |
+
+**`cloud` is the safer default** and stays the recommendation for anyone who can complete
+Meta's verification: at one summary a day the bill is a few rupees a month, and nothing
+can cost the company its WhatsApp number.
+
+**`baileys` is the right answer when** verification is a blocker, message volume would make
+per-message pricing hurt, or a box is being paid for anyway. It is genuinely free and has
+no content restrictions.
+
+If you take the Baileys route, **use a dedicated prepaid SIM**. If it gets restricted you
+buy another; if it was the proprietor's personal number, he loses his contacts, groups and
+history, with nobody to appeal to.
+
+Setup, hosting and pairing: [services/whatsapp-bridge/README.md](../services/whatsapp-bridge/README.md).
+
+### A note on OpenWA
+
+A third provider, [OpenWA](https://github.com/rmyndharis/OpenWA), is still wired up and
+still not recommended:
 
 - **It cannot run on Vercel.** Its own docs describe a headless Chromium at 300–500 MB per
   session, a scanned QR session held on disk, and Postgres + Redis + S3 alongside it.
@@ -56,8 +83,9 @@ gateway. It was rejected on evidence, not preference:
   "higher account-restriction risk". That is the company's WhatsApp number — the one
   dealers use.
 
-The code still supports it (`MESSAGING_PROVIDER=openwa`) because a channel that can break
-should not be a one-way door. But it is not the recommended path.
+It stays supported (`MESSAGING_PROVIDER=openwa`) because a channel that can break should
+not be a one-way door. But the Baileys bridge does the same job with a fraction of the
+footprint — no Chromium, no Redis, no S3 — so there is little reason to pick it now.
 
 ---
 
@@ -173,13 +201,20 @@ One env var, then redeploy. The digest, the alerts and the inbound commands all 
 same way on each.
 
 ```bash
-MESSAGING_PROVIDER=cloud      # Meta official. Recommended.
-MESSAGING_PROVIDER=openwa     # Self-hosted gateway. Needs OPENWA_BASE_URL,
+MESSAGING_PROVIDER=cloud      # Meta official. Recommended. Runs from Vercel.
+MESSAGING_PROVIDER=baileys    # Self-hosted bridge. Free, unofficial, needs a box.
+                              # Needs BAILEYS_BRIDGE_URL, BAILEYS_BRIDGE_TOKEN,
+                              # BAILEYS_WEBHOOK_SECRET.
+MESSAGING_PROVIDER=openwa     # Older self-hosted gateway. Needs OPENWA_BASE_URL,
                               # OPENWA_API_KEY, OPENWA_SESSION_ID, OPENWA_WEBHOOK_SECRET.
 MESSAGING_PROVIDER=telegram   # Free forever, no approval. Needs TELEGRAM_BOT_TOKEN
                               # and TELEGRAM_CHAT_ID.
 MESSAGING_PROVIDER=none       # Log only. The default.
 ```
+
+Only `cloud` has a service window and templates. On `baileys`, `openwa` and `telegram` the
+full digest simply goes out every time, at no cost — which is why `sendSummary` special-cases
+only `cloud`.
 
 With `none`, everything still runs and every message is written to `MessageLog` — so the
 feature can be developed and reviewed with no channel at all.
