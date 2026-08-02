@@ -160,12 +160,48 @@ export async function startBridge(pool: Pool): Promise<Bridge> {
         connection = "closed";
         reconnects += 1;
 
-        const delay = code === DisconnectReason.restartRequired ? 0 : backoffMs;
-        // Capped exponential backoff: a WhatsApp-side outage should not become a
-        // reconnect storm from our side, which is its own way of attracting a ban.
-        backoffMs = Math.min(backoffMs * 2, 60_000);
+        /**
+         * An expired batch of QR codes is not a failure, so it does not get the backoff.
+         *
+         * WhatsApp issues a handful of codes and then closes the socket if none is
+         * scanned. While nobody has paired yet that is the *expected* end of every
+         * connection, not a fault — but the exponential backoff could not tell the
+         * difference and grew to a minute. Somebody watching the pairing page then spends
+         * that minute looking at no code at all and reasonably concludes it is broken.
+         *
+         * So: short, fixed delay while unpaired and waiting to be scanned. The backoff is
+         * kept for everything else, where it is doing real work — a WhatsApp-side outage
+         * must not become a reconnect storm from our side, which is its own way of
+         * attracting attention to a number.
+         */
+        /*
+         * `creds.me`, not `creds.registered`.
+         *
+         * Baileys only sets `registered` on the pairing-*code* path; a device paired by
+         * QR leaves it false forever. Reading it here meant a genuinely paired bridge
+         * still looked like it was waiting to be scanned, so a real `timedOut` — a
+         * network drop — would take the 2s fast path and skip the backoff entirely,
+         * turning an outage into a reconnect storm. `me` is set by both pairing routes
+         * and is the honest answer to "is a device linked".
+         */
+        const awaitingScan = !sock?.authState.creds.me;
+        const qrExpired = awaitingScan && code === DisconnectReason.timedOut;
 
-        logger.warn({ code, delay, lastError }, "WhatsApp disconnected — reconnecting");
+        const delay =
+          code === DisconnectReason.restartRequired ? 0 : qrExpired ? 2_000 : backoffMs;
+
+        if (qrExpired) {
+          backoffMs = 1_000;
+        } else {
+          backoffMs = Math.min(backoffMs * 2, 60_000);
+        }
+
+        logger.warn(
+          { code, delay, lastError, awaitingScan },
+          qrExpired
+            ? "QR codes expired unscanned — issuing a fresh batch"
+            : "WhatsApp disconnected — reconnecting",
+        );
         setTimeout(() => void connect(), delay);
       }
     });
@@ -295,7 +331,9 @@ export async function startBridge(pool: Pool): Promise<Bridge> {
      */
     async requestPairingCode(phoneDigits) {
       if (!sock) throw new Error("The socket is not up yet — try again in a moment.");
-      if (sock.authState.creds.registered) {
+      // Same reason as above: `me` is the reliable "already linked" signal. Guarding on
+      // `registered` let a second /pair disrupt a working QR-paired session.
+      if (sock.authState.creds.me) {
         throw new Error("This bridge is already paired. Call /logout first to re-pair.");
       }
 
