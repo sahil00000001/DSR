@@ -1,4 +1,5 @@
 import "server-only";
+import { formatReference, parseReference } from "@/lib/services/reference";
 import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { prisma, containsInsensitive } from "@/lib/db/prisma";
@@ -713,16 +714,20 @@ export async function countOrdersNeedingAttention(actor: Actor): Promise<number>
   });
 }
 
-/** Next order reference, e.g. ORD-0043. */
+/**
+ * Next order reference, e.g. ORD-0043.
+ *
+ * Ordered by the reference, **not** by `createdAt` — a backdated row (a seed, an import)
+ * holds a high number in the middle of the timeline, so newest-by-date returned a
+ * reference that was already taken. See lib/services/reference.ts.
+ */
 export async function nextOrderNumber(): Promise<string> {
   const latest = await prisma.order.findFirst({
-    orderBy: { createdAt: "desc" },
+    orderBy: { orderNumber: "desc" },
     select: { orderNumber: true },
   });
 
-  const current = Number.parseInt(latest?.orderNumber.split("-")[1] ?? "0", 10);
-  const next = Number.isFinite(current) ? current + 1 : 1;
-  return `ORD-${String(next).padStart(4, "0")}`;
+  return formatReference("ORD", parseReference(latest?.orderNumber) + 1);
 }
 
 export { projectOrder, explainProjection };

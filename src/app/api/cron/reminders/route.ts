@@ -39,6 +39,31 @@ export const runtime = "nodejs";
 // Bulk email is paced, so allow more than the default 10s.
 export const maxDuration = 60;
 
+/**
+ * Runs one part of the evening job, and does not let it take the others down.
+ *
+ * This job does seven unrelated things, and it used to be one long `await` chain — so the
+ * first to throw ended the run. A numbering bug in the recurring-task spawner therefore
+ * stopped the WhatsApp digest and the admin's briefing from going out at all, and the only
+ * evidence was a 500 with somebody else's error in it. The reporting is the part the
+ * client actually asked for; it must not depend on housekeeping succeeding.
+ *
+ * Each failure is logged with the step that produced it and surfaced in the response as a
+ * `failed` list, so a partial run is visible rather than looking like a clean one.
+ */
+async function step<T>(name: string, fallback: T, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    failures.push(name);
+    logger.error(`Cron step "${name}" failed`, error);
+    return fallback;
+  }
+}
+
+/** Steps that failed in the current run. Reset at the start of each request. */
+let failures: string[] = [];
+
 function isAuthorised(request: NextRequest): boolean {
   // Vercel Cron always sends the secret; a missing secret in the environment
   // means the endpoint stays closed rather than open.
@@ -52,6 +77,7 @@ export async function GET(request: NextRequest) {
   }
 
   const now = today();
+  failures = [];
 
   /**
    * `?force=1` runs the job on a day it would otherwise skip.
@@ -140,18 +166,18 @@ export async function GET(request: NextRequest) {
 
     // Recurring tasks are spawned *before* reminders run, so an occurrence created
     // this morning is included in today's deadline sweep rather than waiting a day.
-    const recurrence = await spawnRecurringTasks();
+    const recurrence = await step("recurrence", { spawned: 0 }, spawnRecurringTasks);
 
     const [dsrResult, attendanceResult, prunedNotifications, prunedTokens, taskReminders] =
       await Promise.all([
-        sendBulkEmail(dsrEmails),
-        sendBulkEmail(attendanceEmails),
-        pruneOldNotifications(60),
-        pruneExpiredTokens(),
-        sendTaskDeadlineReminders(),
+        step("dsrEmails", { sent: 0, failed: 0, skipped: 0 }, () => sendBulkEmail(dsrEmails)),
+        step("attendanceEmails", { sent: 0, failed: 0, skipped: 0 }, () => sendBulkEmail(attendanceEmails)),
+        step("pruneNotifications", 0, () => pruneOldNotifications(60)),
+        step("pruneTokens", 0, () => pruneExpiredTokens()),
+        step("taskReminders", { dueSoon: 0, overdue: 0, emails: 0 }, sendTaskDeadlineReminders),
       ]);
 
-    const briefings = await sendDailyBriefing();
+    const briefings = await step("briefing", 0, sendDailyBriefing);
 
     /**
      * The order sweep runs last, and outside the Promise.all above, on purpose.
@@ -160,7 +186,11 @@ export async function GET(request: NextRequest) {
      * which must reflect the state *after* today's recurring tasks were spawned and
      * today's reminders went out, not a snapshot from before.
      */
-    const orders = await sweepOrders();
+    const orders = await step(
+      "orders",
+      { recomputed: 0, newlyAtRisk: 0, delivered: 0, alertsSent: 0, digestSent: false, digestVia: "failed" as string },
+      sweepOrders,
+    );
 
     const summary = {
       date: toDayKey(now),
@@ -183,6 +213,8 @@ export async function GET(request: NextRequest) {
       },
       prunedNotifications,
       prunedTokens,
+      // Empty on a clean run. Present so a half-finished job cannot read as a healthy one.
+      failed: failures,
     };
 
     await recordSystemAudit({ action: "cron.reminders", entity: "system", meta: summary });
