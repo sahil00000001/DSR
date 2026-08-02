@@ -123,7 +123,7 @@ password: whoever scans it links a device to the account.
 ### 5. Confirm
 
 ```bash
-curl http://localhost:8080/health          # {"status":"open",…}
+curl http://localhost:8080/ready           # {"ready":true,"status":"open"}
 ```
 
 `open` means paired and connected. Then point the app at it (below) and reply `STATUS` to
@@ -161,12 +161,47 @@ Anything that runs a container and does not sleep. It idles at roughly 150 MB.
 |---|---|
 | **Railway** | Simplest. Deploy from this directory, set the variables, done. ~$5/month. |
 | **Render** | Works, but **not the free tier** — it spins down when idle, which drops the socket and burns reconnects. |
-| **Fly.io** | Good. Set `min_machines_running = 1`; the default scale-to-zero defeats the purpose. |
+| **Fly.io** | `fly.toml` is committed and already configured. See below — it's four commands. |
 | **A ₹400/month VPS** | Hetzner, DigitalOcean, Contabo. `docker build` and run. |
 
-Whatever you pick, it must **not** scale to zero and must **not** run more than one
-instance. Two containers sharing one session fight over the socket, and WhatsApp reads
-that as a conflicting device.
+Whatever you pick, three rules:
+
+1. **It must not scale to zero.** This service is idle almost all day and must still be
+   connected at 6pm. A stopped container is a dropped socket and a missed summary.
+2. **Exactly one instance.** Two containers sharing one session fight over the socket, and
+   WhatsApp reads that as a conflicting device.
+3. **Point the platform's health check at `/health`, not `/ready`.** `/ready` returns 503
+   until a device is paired, so a platform restarting on it would kill the container every
+   thirty seconds while you were trying to scan the QR — and the pairing could never
+   complete.
+
+### Fly.io, start to finish
+
+```bash
+cd services/whatsapp-bridge
+flyctl auth login
+flyctl launch --no-deploy --copy-config --name pmpl-whatsapp-bridge
+
+flyctl secrets set \
+  DATABASE_URL='postgresql://…:5432/postgres' \
+  BRIDGE_TOKEN='…' \
+  BRIDGE_WEBHOOK_SECRET='…' \
+  APP_WEBHOOK_URL='https://<your-app>.vercel.app/api/whatsapp' \
+  ADMIN_NUMBER='919876543210'
+
+flyctl deploy
+flyctl status                 # note the hostname — that is BAILEYS_BRIDGE_URL
+```
+
+Then pair it. `flyctl proxy` tunnels the bridge to your machine so the pairing page works
+against the deployed instance exactly as it did locally:
+
+```bash
+flyctl proxy 8090:8080        # leave running
+npm run pair                  # in another terminal → http://localhost:8099
+```
+
+### Docker, anywhere else
 
 ```bash
 docker build -t pmpl-whatsapp-bridge .
@@ -181,7 +216,8 @@ Everything except `/health` needs `Authorization: Bearer $BRIDGE_TOKEN`.
 
 | Route | Does |
 |---|---|
-| `GET /health` | Public. `200` when connected, `503` otherwise. Deliberately does not reveal the paired number. |
+| `GET /health` | Public **liveness**. Always `200` while the process is up. Point the platform here. |
+| `GET /ready` | Public **readiness**. `200` only when WhatsApp is connected. For monitoring — never for restarts. |
 | `GET /status` | Connection state, paired number, pending QR, reconnect count. |
 | `GET /qr` | The QR string, while unpaired. |
 | `POST /pair` | `{"phone":"91…"}` → an eight-character pairing code. |

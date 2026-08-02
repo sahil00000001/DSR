@@ -4,13 +4,13 @@ import pino from "pino";
 import { config } from "./config.js";
 
 /**
- * The bridge's HTTP surface. Four routes, no framework.
+ * The bridge's HTTP surface. A handful of routes, no framework.
  *
- * `node:http` rather than Express: this is four endpoints on a box whose entire job is
+ * `node:http` rather than Express: this is a few endpoints on a box whose entire job is
  * staying up, and every dependency here is one more thing that can fail to install during
  * a redeploy at six in the evening.
  *
- * ## Everything except /health requires the token
+ * ## Everything except the probes requires the token
  *
  * `/send` can message anybody as the company's number, `/qr` and `/pair` can hand the
  * account to whoever holds the result, and `/logout` can take the channel down. There is
@@ -18,9 +18,9 @@ import { config } from "./config.js";
  * and compared in constant time — a token verified with `===` leaks its prefix to anyone
  * patient enough to measure.
  *
- * `/health` is deliberately outside that: platforms probe it unauthenticated, and it
- * reports only whether the socket is up. It does not include the paired number, which
- * would otherwise publish the company's WhatsApp number to anyone who found the URL.
+ * `/health` and `/ready` sit outside that because probes are unauthenticated. Neither
+ * reveals the paired number, which would otherwise publish the company's WhatsApp number
+ * to anyone who found the URL. See each for why they are two routes and not one.
  */
 
 const logger = pino({ level: config.logLevel });
@@ -85,11 +85,33 @@ export function createBridgeServer(handlers: Handlers) {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     const route = `${request.method} ${url.pathname}`;
 
-    // Unauthenticated: platform health probes need it, so it says as little as possible.
+    /**
+     * Liveness. Answers 200 whenever the process is up, whatever WhatsApp is doing.
+     *
+     * This is what a hosting platform polls, and platforms restart what fails it. An
+     * earlier version returned 503 until a device was paired — which meant Fly or Railway
+     * would kill and restart the container every thirty seconds while somebody was trying
+     * to scan the QR, so the pairing could never complete. The bridge being unpaired is
+     * not the process being broken, and only the process is this endpoint's business.
+     *
+     * Unauthenticated, because probes are, so it says as little as it can: no paired
+     * number, which would otherwise publish the company's WhatsApp number to anyone who
+     * found the URL.
+     */
     if (route === "GET /health") {
       const { connection, reconnects, since } = handlers.status();
-      const healthy = connection === "open";
-      return json(response, healthy ? 200 : 503, { status: connection, reconnects, since });
+      return json(response, 200, { alive: true, status: connection, reconnects, since });
+    }
+
+    /**
+     * Readiness — 503 until WhatsApp is actually connected.
+     *
+     * Split from liveness so it can be honest without being destructive. Point uptime
+     * monitoring here, never the platform's restart check.
+     */
+    if (route === "GET /ready") {
+      const { connection } = handlers.status();
+      return json(response, connection === "open" ? 200 : 503, { ready: connection === "open", status: connection });
     }
 
     if (!authorised(request)) {
